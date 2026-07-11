@@ -1,0 +1,178 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Send, Volume2, VolumeX } from "lucide-react";
+import type { DialogueTurn, NpcDef } from "@/lib/universe";
+
+export function DialogueBox({
+  npc,
+  history,
+  options,
+  thinking,
+  speaking,
+  voiceOn,
+  onToggleVoice,
+  onSay,
+  onClose,
+}: {
+  npc: NpcDef;
+  history: DialogueTurn[];
+  options: string[];
+  thinking: boolean;
+  speaking: boolean;
+  voiceOn: boolean;
+  onToggleVoice: () => void;
+  onSay: (line: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastNpcLine = [...history].reverse().find((t) => t.speaker === "npc");
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
+  }, [history.length, thinking]);
+
+  // Number-key replies + Esc to leave.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (document.activeElement?.tagName === "INPUT") return;
+      const n = Number(e.key);
+      if (!thinking && n >= 1 && n <= options.length) {
+        onSay(options[n - 1]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [options, thinking, onSay, onClose]);
+
+  return (
+    <motion.div
+      initial={{ y: 24, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 24, opacity: 0 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      className="sheet pointer-events-auto w-full max-w-2xl rounded-t-2xl px-5 pb-5 pt-4 sm:rounded-2xl"
+    >
+      {/* Header */}
+      <div className="mb-2 flex items-center gap-2.5">
+        <div>
+          <p className="font-display text-lg font-bold leading-none text-ink">
+            {npc.name}
+          </p>
+          <p className="mt-0.5 text-xs font-medium text-inksoft">{npc.role}</p>
+        </div>
+        <button
+          onClick={onToggleVoice}
+          className={`ml-auto flex h-8 w-8 items-center justify-center rounded-full transition ${
+            voiceOn ? "bg-primary/10 text-primary" : "bg-ink/6 text-inksoft"
+          }`}
+          title={voiceOn ? "Voice on" : "Voice off"}
+        >
+          {voiceOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+        </button>
+        <button
+          onClick={onClose}
+          className="rounded-full bg-ink/6 px-3 py-1.5 text-xs font-bold text-inksoft transition hover:bg-ink/10"
+        >
+          Esc · leave
+        </button>
+      </div>
+
+      {/* Transcript (last few turns) */}
+      <div
+        ref={scrollRef}
+        className="no-scrollbar max-h-36 space-y-1.5 overflow-y-auto pb-1"
+      >
+        {history.slice(-6).map((t, i) => (
+          <p
+            key={`${i}-${t.text.slice(0, 12)}`}
+            className={
+              t.speaker === "npc"
+                ? "text-[15px] font-medium leading-snug text-ink"
+                : "text-right text-sm font-semibold text-primary"
+            }
+          >
+            {t.text}
+          </p>
+        ))}
+        {thinking && (
+          <p className="flex items-center gap-1.5 text-sm font-medium text-inksoft">
+            <span className="animate-breathe inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            <span
+              className="animate-breathe inline-block h-1.5 w-1.5 rounded-full bg-primary"
+              style={{ animationDelay: "0.15s" }}
+            />
+            <span
+              className="animate-breathe inline-block h-1.5 w-1.5 rounded-full bg-primary"
+              style={{ animationDelay: "0.3s" }}
+            />
+          </p>
+        )}
+        {speaking && !thinking && lastNpcLine && (
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-primary/70">
+            <Volume2 size={11} /> speaking…
+          </p>
+        )}
+      </div>
+
+      {/* Reply options */}
+      <AnimatePresence mode="wait">
+        {!thinking && options.length > 0 && (
+          <motion.div
+            key={history.length}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mt-2.5 flex flex-wrap gap-2"
+          >
+            {options.map((opt, i) => (
+              <button
+                key={opt}
+                onClick={() => onSay(opt)}
+                className="flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-3.5 py-2 text-sm font-semibold text-ink shadow-soft transition hover:border-primary/40 active:scale-95"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                  {i + 1}
+                </span>
+                {opt}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Free-text reply */}
+      <form
+        className="mt-3 flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const line = draft.trim();
+          if (!line || thinking) return;
+          setDraft("");
+          onSay(line);
+        }}
+      >
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={`Say anything to ${npc.name}…`}
+          className="min-w-0 flex-1 rounded-full border border-ink/10 bg-background px-4 py-2.5 text-sm font-medium text-ink outline-none placeholder:text-inksoft/60 focus:border-primary/50"
+        />
+        <button
+          type="submit"
+          disabled={thinking || !draft.trim()}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-soft transition enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-40"
+        >
+          <Send size={15} />
+        </button>
+      </form>
+    </motion.div>
+  );
+}

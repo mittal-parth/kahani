@@ -1,26 +1,134 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Warm cream paper + warm near-black ink (no cool blue-white). */
+  --background: #f6f0e6;
+  --foreground: #2a201a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+
+  /* Restrained, low-chroma, warm palette (Hallmark playful). */
+  --color-primary: #c8552e; /* terracotta anchor */
+  --color-primary2: #d98a3d; /* warm ochre */
+  --color-ink: #2a201a;
+  --color-inksoft: #7c6d61;
+  --color-surface: #fffdf8;
+
+  /* Muted semantic hues — distinguishable, never saturated. */
+  --color-bold: #c04a2f;
+  --color-cautious: #4a7c88;
+  --color-cunning: #6d5f97;
+  --color-kind: #6b8e5a;
+
+  --color-health: #b34a44;
+  --color-clock: #6d5f97;
+  --color-rupees: #b3862f;
+  --color-karma: #4a7c88;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Single warm anchor wash — one hue, no purple/blue mesh. */
+body {
+  background-image:
+    radial-gradient(72% 58% at 8% -10%, rgba(200, 85, 46, 0.08), transparent 60%);
+  background-attachment: fixed;
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+
+/* ---- Surfaces (no glassmorphism — solid warm surfaces + soft shadow) ---- */
+
+/* Opaque panel that floats over imagery. Legible without frosted blur. */
+.panel {
+  background: var(--color-surface);
+  border: 1px solid rgba(42, 32, 26, 0.07);
+  box-shadow: 0 6px 20px -12px rgba(42, 32, 26, 0.35);
+}
+
+/* Bottom control sheet — solid, soft upward shadow. */
+.sheet {
+  background: var(--color-surface);
+  border-top: 1px solid rgba(42, 32, 26, 0.06);
+  box-shadow: 0 -10px 34px -16px rgba(42, 32, 26, 0.28);
+}
+
+/* Menu / recap card. */
+.card {
+  background: var(--color-surface);
+  border: 1px solid rgba(42, 32, 26, 0.06);
+  box-shadow: 0 8px 24px -14px rgba(200, 85, 46, 0.28);
+}
+
+.shadow-soft {
+  box-shadow: 0 8px 24px -14px rgba(42, 32, 26, 0.3);
+}
+
+/* ---- Animations ---- */
+@keyframes kenburns {
+  0% {
+    transform: scale(1.05) translate(0, 0);
+  }
+  100% {
+    transform: scale(1.16) translate(-1.5%, -1.5%);
+  }
+}
+.animate-kenburns {
+  animation: kenburns 20s ease-out forwards;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(200, 85, 46, 0.28),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-breathe {
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Legible white text when it must sit directly on an image. */
+.text-shadow-soft {
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.5);
 }

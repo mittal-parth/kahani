@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kahani — an AI story you play
 
-## Getting Started
+A cinematic, choice-driven interactive story set in India where **every scene is
+generated in real time**. Pick a world, make a choice, and a fresh 1K image + the
+next beat of narrative are generated on the fly. No two playthroughs are alike.
 
-First, run the development server:
+Built for the **Nano Banana 2 Lite** hackathon — real-time, high-volume image
+generation is load-bearing to the experience, not a bolt-on prompt box.
+
+## The per-turn pipeline
+
+Each choice fires a two-stage generative pipeline server-side:
+
+1. **Story** — a Gemini text model takes the story-so-far + the player's choice and
+   returns structured JSON: `narrative`, 4 `choices`, an `imagePrompt`, and an
+   `isEnding` flag (`lib/gemini.ts` → `generateBeat`).
+2. **Image** — NB2 Lite turns that `imagePrompt` (+ a per-world style bible + the
+   **previous frame as a visual reference** for character/style continuity) into the
+   scene image (`generateImage`).
+
+Orchestrated in `app/api/turn/route.ts`; the API key never leaves the server.
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then fill in the values
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+In `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+GEMINI_API_KEY=...           # from https://aistudio.google.com/apikey
+TEXT_MODEL=gemini-2.5-flash
+IMAGE_MODEL=gemini-2.5-flash-image   # ← swap for the NB2 Lite model ID
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`IMAGE_MODEL` defaults to a public image model so the app runs before you have
+NB2 Lite access. Point it at the hackathon's NB2 Lite ID when ready — no code
+changes needed.
 
-## Learn More
+## Project map
 
-To learn more about Next.js, take a look at the following resources:
+| Path                       | Role                                              |
+| -------------------------- | ------------------------------------------------- |
+| `lib/premises.ts`          | The four India-set starting worlds + style bibles |
+| `lib/gemini.ts`            | Text (structured) + image generation              |
+| `app/api/turn/route.ts`    | Per-turn orchestration                            |
+| `components/Game.tsx`      | Client state machine (landing → playing → ending) |
+| `components/SceneView.tsx` | The cinematic gameplay screen                     |
+| `components/Ending.tsx`    | Journey recap filmstrip                           |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Ideas to push further
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Prefetch all 4 branches** while the player reads — generate the next image for
+  every choice in parallel so the next scene is instant. This is the strongest
+  showcase of NB2 Lite's speed + cost (4× the generation, still cheap/fast).
+- Per-world aspect ratios and a shareable "story card" of the finished journey.
+- Runtime genre picker / custom premise input.
