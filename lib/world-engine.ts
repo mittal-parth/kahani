@@ -12,8 +12,8 @@ import type {
 } from "./universe";
 
 /** Appended to every scene render so the world reads as one retro RPG overworld. */
-const ISO_STYLE =
-  "Rendered as a 16-bit retro RPG overworld screen (classic Pokemon Game Boy Advance style): near-top-down 3/4 view, chunky clean pixel-art, tile-based ground (paths, grass, paving) filling most of the frame, small buildings showing their front face and roof with ONE large centered door each, bright saturated flat colors, crisp hard pixel edges, no painterly brushwork, no gradients, no blur.";
+const PIXEL_STYLE =
+  "Rendered as a 2D top-down 16-bit retro RPG overworld screen (classic Pokemon Game Boy Advance style): flat top-down 2D view, chunky clean pixel-art, tile-based ground (paths, grass, paving) filling most of the frame, small buildings drawn front-on with roof visible above and ONE large centered door each, bright saturated flat colors, crisp hard pixel edges, no perspective, no isometric angle, no gradients, no blur.";
 
 const TEXT_MODEL = process.env.TEXT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -128,21 +128,15 @@ const walkabilitySchema = {
         "Up to 8 boxes over DISCRETE solid objects the player clearly cannot stand on: a water body, a parked vehicle, a market stall, a counter, a fire. Each box tight around one object. NEVER box open street, floor, path, or ground — most of the walkable area must remain open. Ignore small clutter and background buildings above the ground plane.",
       items: rectSchema,
     },
-    depthGrid: {
-      type: Type.ARRAY,
-      items: { type: Type.INTEGER },
-      description:
-        "Exactly 160 integers: a 16-wide × 10-tall row-major grid over the image (top-left first). Each is the scene depth at that cell: 0 = nearest to the camera, 100 = farthest (sky/horizon). Estimate from perspective cues.",
-    },
   },
-  required: ["groundTop", "obstacles", "depthGrid"],
+  required: ["groundTop", "obstacles"],
 };
 
 async function analyzeWalkability(
   b64: string,
   mimeType: string,
   keepClearNote: string
-): Promise<{ groundTop: number; obstacles: Rect[]; depthGrid?: number[] }> {
+): Promise<{ groundTop: number; obstacles: Rect[] }> {
   try {
     const res = await ai().models.generateContent({
       model: TEXT_MODEL,
@@ -162,14 +156,8 @@ async function analyzeWalkability(
     const parsed = JSON.parse(res.text) as {
       groundTop: number;
       obstacles: Rect[];
-      depthGrid?: number[];
     };
     const groundTop = Math.max(28, Math.min(80, Math.round(parsed.groundTop)));
-    const depthGrid = Array.isArray(parsed.depthGrid)
-      ? parsed.depthGrid
-          .slice(0, 160)
-          .map((v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0))))
-      : undefined;
     let obstacles = (parsed.obstacles ?? []).slice(0, 8).map(clampRect);
 
     // Safety cap: the walk band must stay mostly open. An over-eager vision
@@ -194,10 +182,10 @@ async function analyzeWalkability(
         .slice(1);
     }
 
-    return { groundTop, obstacles, depthGrid };
+    return { groundTop, obstacles };
   } catch (err) {
     console.error("[analyzeWalkability] falling back to open ground:", err);
-    return { groundTop: 58, obstacles: [], depthGrid: undefined };
+    return { groundTop: 58, obstacles: [] };
   }
 }
 
@@ -329,7 +317,7 @@ export async function generateStreetScene(
   };
 
   const img = await generateImage(
-    `${spec.imagePrompt} ${ISO_STYLE}`,
+    `${spec.imagePrompt} ${PIXEL_STYLE}`,
     premise.styleBible,
     null
   );
@@ -360,7 +348,6 @@ export async function generateStreetScene(
     hotspots,
     groundTop: walk.groundTop,
     obstacles: walk.obstacles,
-    depthGrid: walk.depthGrid,
     questHook: spec.questHook,
   };
 }
@@ -413,7 +400,7 @@ export async function generateInteriorScene(
   };
 
   const img = await generateImage(
-    `${spec.imagePrompt} ${ISO_STYLE}`,
+    `${spec.imagePrompt} ${PIXEL_STYLE}`,
     premise.styleBible,
     null
   );
@@ -452,7 +439,6 @@ export async function generateInteriorScene(
     parentId: "street",
     groundTop: walk.groundTop,
     obstacles: walk.obstacles,
-    depthGrid: walk.depthGrid,
     clueIndex: building.clueIndex,
   };
 }
@@ -610,7 +596,7 @@ const finaleSchema = {
     imagePrompt: {
       type: Type.STRING,
       description:
-        "Prompt for the closing frame: the moment of revelation, isometric 3/4 game-diorama view, consistent with the world. No text in image.",
+        "Prompt for the closing frame: the moment of revelation, 2D top-down retro RPG view, consistent with the world. No text in image.",
     },
   },
   required: ["title", "resolution", "imagePrompt"],
@@ -644,7 +630,7 @@ export async function generateFinale(
     imagePrompt: string;
   };
   const img = await generateImage(
-    `${spec.imagePrompt} ${ISO_STYLE}`,
+    `${spec.imagePrompt} ${PIXEL_STYLE}`,
     premise.styleBible,
     null
   );

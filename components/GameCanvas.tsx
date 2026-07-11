@@ -308,7 +308,7 @@ export function GameCanvas({
       // --- Player sprite (sized against the IMAGE, not the window) ---
       const footX = X(px);
       const footY = Y(py);
-      const scale = 0.85 + 0.2 * p.depth;
+      const scale = 1; // flat 2D top-down: constant character size
       const spriteH = dh * 0.16 * scale;
 
       // soft ground shadow
