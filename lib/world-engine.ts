@@ -14,10 +14,6 @@ const TEXT_MODEL = process.env.TEXT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 const VOICE_MODEL = process.env.VOICE_MODEL || "gemini-2.5-flash-preview-tts";
 
-/* ------------------------------------------------------------------ */
-/* Scene generation                                                    */
-/* ------------------------------------------------------------------ */
-
 const rectSchema = {
   type: Type.OBJECT,
   properties: {
@@ -28,6 +24,113 @@ const rectSchema = {
   },
   required: ["x", "y", "w", "h"],
 };
+
+function clampRect(r: Rect): Rect {
+  const c = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+  return { x: c(r.x), y: c(r.y), w: Math.max(4, c(r.w)), h: Math.max(4, c(r.h)) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Universe from a player's freeform idea                              */
+/* ------------------------------------------------------------------ */
+
+const universeSchema = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "World name, 2-4 words." },
+    setup: {
+      type: Type.STRING,
+      description:
+        "Two second-person sentences: who the player is and what pulls them into this world. Faithful to the player's idea; invent the missing pieces.",
+    },
+    styleBible: {
+      type: Type.STRING,
+      description:
+        "One sentence of concrete art direction that every frame of this world will share: rendering style, lighting, palette, mood, camera. e.g. 'Painterly dusk light, warm ochre palette, 35mm film still.'",
+    },
+  },
+  required: ["title", "setup", "styleBible"],
+};
+
+export type UniverseSpec = { title: string; setup: string; styleBible: string };
+
+/** Expand a player's freeform scene idea into a playable universe spec. */
+export async function expandUniverse(idea: string): Promise<UniverseSpec> {
+  const res = await ai().models.generateContent({
+    model: TEXT_MODEL,
+    contents: `PLAYER'S IDEA FOR THE OPENING SCENE / WORLD:\n${idea}\n\nTurn this into a playable adventure-game universe.`,
+    config: {
+      systemInstruction:
+        "You are the creative director of an explorable adventure game. Honor the player's idea — its place, era, tone, and any named details — and sharpen it into a game-ready spec. If the idea names no setting, choose an evocative one that fits it. Return ONLY the structured object.",
+      responseMimeType: "application/json",
+      responseSchema: universeSchema,
+      temperature: 1.0,
+    },
+  });
+  if (!res.text) throw new Error("Empty universe spec from text model.");
+  return JSON.parse(res.text) as UniverseSpec;
+}
+
+/* ------------------------------------------------------------------ */
+/* Walkability — a vision pass over the ACTUAL generated frame         */
+/* ------------------------------------------------------------------ */
+
+const walkabilitySchema = {
+  type: Type.OBJECT,
+  properties: {
+    groundTop: {
+      type: Type.INTEGER,
+      description:
+        "The y percent (0-100 from the top) where walkable ground begins in this image. The player may only walk below this line.",
+    },
+    obstacles: {
+      type: Type.ARRAY,
+      description:
+        "Up to 8 boxes over regions in the walkable lower half that the player must NOT walk through: water, people/animals, stalls, counters, furniture, vehicles, walls, fires. Ignore small clutter.",
+      items: rectSchema,
+    },
+  },
+  required: ["groundTop", "obstacles"],
+};
+
+async function analyzeWalkability(
+  b64: string,
+  mimeType: string,
+  keepClearNote: string
+): Promise<{ groundTop: number; obstacles: Rect[] }> {
+  try {
+    const res = await ai().models.generateContent({
+      model: TEXT_MODEL,
+      contents: [
+        { inlineData: { data: b64, mimeType } },
+        {
+          text: `This is a frame from a 2D adventure game. The player character walks on the ground plane in the lower part of the image. Map its walkability. ${keepClearNote} Return ONLY the structured object.`,
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: walkabilitySchema,
+        temperature: 0.2,
+      },
+    });
+    if (!res.text) throw new Error("empty walkability");
+    const parsed = JSON.parse(res.text) as {
+      groundTop: number;
+      obstacles: Rect[];
+    };
+    return {
+      groundTop: Math.max(40, Math.min(80, Math.round(parsed.groundTop))),
+      obstacles: (parsed.obstacles ?? []).slice(0, 8).map(clampRect),
+    };
+  } catch (err) {
+    console.error("[analyzeWalkability] falling back to open ground:", err);
+    return { groundTop: 58, obstacles: [] };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Scene generation                                                    */
+/* ------------------------------------------------------------------ */
 
 const streetSchema = {
   type: Type.OBJECT,
@@ -45,7 +148,7 @@ const streetSchema = {
     imagePrompt: {
       type: Type.STRING,
       description:
-        "Rich prompt for a WIDE eye-level street/exterior shot. The lower third must be open walkable ground with NO people in the near foreground. Buildings with distinct doorways line the scene. Authentic Indian detail. No text in image.",
+        "Rich prompt for a WIDE eye-level street/exterior shot. The lower third must be open walkable ground with NO people in the near foreground. Buildings with distinct doorways line the scene. Authentic, era- and place-faithful detail for this universe. No text in image.",
     },
     buildings: {
       type: Type.ARRAY,
@@ -77,7 +180,7 @@ const interiorSchema = {
     imagePrompt: {
       type: Type.STRING,
       description:
-        "Rich prompt for a WIDE interior shot of this place with ONE character (the NPC) visible mid-frame. Lower third open floor, walkable, no other people in the near foreground. Authentic Indian detail. No text in image.",
+        "Rich prompt for a WIDE interior shot of this place with ONE character (the NPC) visible mid-frame. Lower third open floor, walkable, no other people in the near foreground. Authentic, era- and place-faithful detail for this universe. No text in image.",
     },
     npc: {
       type: Type.OBJECT,
@@ -107,11 +210,6 @@ const interiorSchema = {
   required: ["title", "ambient", "imagePrompt", "npc", "npcZone", "exitZone"],
 };
 
-function clampRect(r: Rect): Rect {
-  const c = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-  return { x: c(r.x), y: c(r.y), w: Math.max(4, c(r.w)), h: Math.max(4, c(r.h)) };
-}
-
 export async function generateStreetScene(
   premise: Premise
 ): Promise<SceneData & { questHook: string }> {
@@ -124,7 +222,7 @@ export async function generateStreetScene(
     ].join("\n"),
     config: {
       systemInstruction:
-        "You are the level designer of an explorable adventure game set in India. You design scenes as images plus interactive hotspots with accurate percent-coordinate boxes. Doorways sit at ground level (y of the box bottom around 55-75). Return ONLY the structured object.",
+        "You are the level designer of an explorable adventure game. You design scenes as images plus interactive hotspots with accurate percent-coordinate boxes. Doorways sit at ground level (y of the box bottom around 55-75). Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: streetSchema,
       temperature: 1.0,
@@ -140,6 +238,13 @@ export async function generateStreetScene(
   };
 
   const img = await generateImage(spec.imagePrompt, premise.styleBible, null);
+
+  // Ground the collision map in the ACTUAL pixels that came back.
+  const walk = await analyzeWalkability(
+    img.b64,
+    img.mimeType,
+    "Do include boxes over any water, crowds, vehicles, and stalls."
+  );
 
   const hotspots: Hotspot[] = spec.buildings.slice(0, 4).map((b, i) => ({
     id: `b${i}`,
@@ -157,6 +262,8 @@ export async function generateStreetScene(
     ambient: spec.ambient,
     image: toDataUrl(img.b64, img.mimeType),
     hotspots,
+    groundTop: walk.groundTop,
+    obstacles: walk.obstacles,
     questHook: spec.questHook,
   };
 }
@@ -177,7 +284,7 @@ export async function generateInteriorScene(
     ].join("\n"),
     config: {
       systemInstruction:
-        "You are the level + character designer of an explorable adventure game set in India. Percent-coordinate boxes must match where things appear in the image you describe. Return ONLY the structured object.",
+        "You are the level + character designer of an explorable adventure game. Percent-coordinate boxes must match where things appear in the image you describe. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: interiorSchema,
       temperature: 1.0,
@@ -194,6 +301,12 @@ export async function generateInteriorScene(
   };
 
   const img = await generateImage(spec.imagePrompt, premise.styleBible, null);
+
+  const walk = await analyzeWalkability(
+    img.b64,
+    img.mimeType,
+    "Do NOT box the single main character (the shopkeeper/NPC) — the player must be able to approach them. Do box counters, furniture, and any water or fire."
+  );
 
   const hotspots: Hotspot[] = [
     {
@@ -221,6 +334,8 @@ export async function generateInteriorScene(
     hotspots,
     npc: spec.npc,
     parentId: "street",
+    groundTop: walk.groundTop,
+    obstacles: walk.obstacles,
   };
 }
 
@@ -228,14 +343,28 @@ export async function generateInteriorScene(
 /* Player sprite                                                       */
 /* ------------------------------------------------------------------ */
 
-export async function generateSprite(premise: Premise): Promise<string> {
+/**
+ * Generate the player sprite. When the opening frame is supplied it is passed
+ * as a style reference so the character shares the world's exact art style,
+ * lighting, and color grade instead of looking pasted-in.
+ */
+export async function generateSprite(
+  premise: Premise,
+  referenceFrame: string | null
+): Promise<string> {
   const prompt = [
     `Full-body 2D adventure-game player character for this world: ${premise.setup}`,
-    `Style: ${premise.styleBible}`,
+    referenceFrame
+      ? "CRITICAL: render the character in EXACTLY the same art style, rendering technique, lighting direction, and color grade as the reference image, as if painted by the same artist for the same scene."
+      : `Style: ${premise.styleBible}`,
     "Single character, standing, relaxed, facing right, full body head to feet.",
     "Isolated on a PURE WHITE background, no shadow, no ground, no text, no border. Character fills most of the frame height.",
   ].join(" ");
-  const img = await generateImage(prompt, "clean game-asset render", null);
+  const img = await generateImage(
+    prompt,
+    referenceFrame ? "" : "clean game-asset render",
+    referenceFrame
+  );
   return toDataUrl(img.b64, img.mimeType);
 }
 
@@ -296,7 +425,7 @@ export async function generateDialogue(
     contents: lines.join("\n"),
     config: {
       systemInstruction:
-        "You are an NPC in an explorable adventure game set in India. Speak naturally and briefly — these lines are voiced aloud. Never break character, never mention being an AI. Return ONLY the structured object.",
+        "You are an NPC in an explorable adventure game. Speak naturally and briefly — these lines are voiced aloud. Never break character, never mention being an AI. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: dialogueSchema,
       temperature: 1.0,

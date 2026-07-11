@@ -33,6 +33,10 @@ export type SceneData = {
   npc?: NpcDef;
   /** Interior scenes remember the street they came from. */
   parentId?: string;
+  /** Vision-derived: y (%) where walkable ground begins (the horizon). */
+  groundTop?: number;
+  /** Vision-derived no-walk boxes: water, people, stalls, furniture, vehicles. */
+  obstacles?: Rect[];
 };
 
 export type DialogueTurn = {

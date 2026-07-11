@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { HistoryEntry, Premise, Scene, TurnResponse } from "@/lib/types";
 import { INITIAL_CLOCK } from "@/lib/constants";
 import { applyEffects, clampClock, INITIAL_STATS, type Stats } from "@/lib/stats";
+import { PREMISES } from "@/lib/premises";
 import { Landing } from "./Landing";
 import { SceneView } from "./SceneView";
 import { Ending } from "./Ending";
@@ -284,7 +285,11 @@ export function Game() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <Landing onSelect={begin} />
+            <Landing
+              onStart={(idea) =>
+                begin(PREMISES.find((p) => p.setup === idea) ?? PREMISES[0])
+              }
+            />
           </motion.div>
         )}
 

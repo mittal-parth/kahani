@@ -1,21 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PREMISES } from "@/lib/premises";
-import type { Premise } from "@/lib/types";
 import { PREMISE_ICON } from "./icons";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
-export function Landing({
-  onSelect,
-}: {
-  onSelect: (premise: Premise) => void;
-}) {
+export function Landing({ onStart }: { onStart: (idea: string) => void }) {
+  const [idea, setIdea] = useState("");
+
+  const submit = () => {
+    const text = idea.trim();
+    if (text) onStart(text);
+  };
+
   return (
     <div className="mx-auto grid min-h-dvh max-w-5xl grid-cols-1 items-start gap-10 px-6 py-14 md:grid-cols-[minmax(0,1fr)_1.25fr] md:gap-16 md:py-24">
-      {/* Left-biased title block (no centred hero) */}
+      {/* Left-biased title block */}
       <motion.header
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -34,18 +37,57 @@ export function Landing({
           Kahani
         </h1>
         <p className="mt-4 max-w-xs text-lg font-semibold text-ink">
-          An AI story you play — set in India.
+          Describe a scene. Walk into it.
         </p>
         <p className="mt-4 max-w-sm text-sm font-medium leading-relaxed text-inksoft">
-          Pick a world. Every move rewrites what happens next, and a fresh scene
-          is generated in seconds. No two runs are the same.
+          Your words become a living, explorable world — streets, buildings,
+          characters, and voices, all generated as you play. WASD to move, E to
+          enter.
         </p>
       </motion.header>
 
-      {/* Worlds as an editorial index list (not a symmetric card grid) */}
-      <div>
-        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-inksoft">
-          Choose a world
+      {/* Scene-idea entry */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.08, ease: EASE_OUT }}
+      >
+        <label
+          htmlFor="scene-idea"
+          className="mb-2 block text-xs font-bold uppercase tracking-widest text-inksoft"
+        >
+          Your opening scene
+        </label>
+        <div className="card rounded-2xl p-2">
+          <textarea
+            id="scene-idea"
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+            }}
+            rows={4}
+            placeholder="e.g. A rain-flooded night market in Mumbai. I'm a courier carrying a sealed tiffin box someone will kill for…"
+            className="w-full resize-none rounded-xl bg-transparent px-3 py-2.5 text-[15px] font-medium leading-relaxed text-ink outline-none placeholder:text-inksoft/50"
+          />
+          <div className="flex items-center justify-between px-2 pb-1">
+            <span className="text-[11px] font-medium text-inksoft/70">
+              Any place, any era, any story — ⌘↵ to start
+            </span>
+            <button
+              onClick={submit}
+              disabled={!idea.trim()}
+              className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-soft transition enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-40"
+            >
+              Build my world
+              <ArrowRight size={15} />
+            </button>
+          </div>
+        </div>
+
+        {/* One-tap starting points */}
+        <p className="mb-1 mt-8 text-xs font-bold uppercase tracking-widest text-inksoft">
+          Or start from one of these
         </p>
         <ul>
           {PREMISES.map((premise, i) => {
@@ -53,35 +95,31 @@ export function Landing({
             return (
               <motion.li
                 key={premise.id}
-                initial={{ opacity: 0, y: 12 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  duration: 0.4,
-                  delay: 0.1 + i * 0.06,
-                  ease: EASE_OUT,
-                }}
+                transition={{ duration: 0.4, delay: 0.15 + i * 0.06, ease: EASE_OUT }}
               >
                 <button
-                  onClick={() => onSelect(premise)}
-                  className="group flex w-full items-center gap-4 border-t border-ink/10 py-5 text-left transition-colors hover:border-primary/40"
+                  onClick={() => onStart(premise.setup)}
+                  className="group flex w-full items-center gap-4 border-t border-ink/10 py-4 text-left transition-colors hover:border-primary/40"
                 >
                   {Icon ? (
                     <Icon
-                      size={26}
+                      size={22}
                       strokeWidth={1.75}
-                      className="shrink-0 text-primary transition-transform duration-300 group-hover:-translate-y-0.5"
+                      className="shrink-0 text-primary"
                     />
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">
+                    <h2 className="font-display text-lg font-bold text-ink">
                       {premise.title}
                     </h2>
-                    <p className="mt-0.5 text-sm font-medium text-inksoft">
+                    <p className="truncate text-sm font-medium text-inksoft">
                       {premise.tagline}
                     </p>
                   </div>
-                  <ChevronRight
-                    size={20}
+                  <ArrowRight
+                    size={17}
                     className="shrink-0 text-inksoft/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-primary"
                   />
                 </button>
@@ -90,10 +128,10 @@ export function Landing({
           })}
         </ul>
 
-        <p className="mt-10 border-t border-ink/10 pt-5 text-xs font-medium text-inksoft/70">
+        <p className="mt-8 border-t border-ink/10 pt-5 text-xs font-medium text-inksoft/70">
           Real-time generative storytelling · built for the NB2 Lite hackathon
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

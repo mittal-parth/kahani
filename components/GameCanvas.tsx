@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Hotspot, SceneData } from "@/lib/universe";
 
-/** Depth band the player walks in, as % of frame height (pseudo-2.5D). */
-const BAND_TOP = 58;
+/** Default depth band the player walks in, as % of frame height (pseudo-2.5D). */
+const DEFAULT_BAND_TOP = 58;
 const BAND_BOTTOM = 92;
 const SPEED_X = 26; // % of width per second
 const SPEED_DEPTH = 0.55; // band fraction per second
@@ -51,10 +51,43 @@ export function GameCanvas({
     };
   }, [scene.id, scene.image, scene.kind]);
 
+  // Ground horizon from the vision pass over the actual frame.
+  const bandTop = Math.max(
+    45,
+    Math.min(80, scene.groundTop ?? DEFAULT_BAND_TOP)
+  );
+
   const playerFoot = useCallback((): { px: number; py: number } => {
     const p = playerRef.current;
-    return { px: p.x, py: BAND_TOP + (BAND_BOTTOM - BAND_TOP) * p.depth };
-  }, []);
+    return { px: p.x, py: bandTop + (BAND_BOTTOM - bandTop) * p.depth };
+  }, [bandTop]);
+
+  /** True when the point is inside a no-walk obstacle box (water, people,
+   *  stalls…) — unless it's within an interaction zone, which stays reachable. */
+  const isBlocked = useCallback(
+    (px: number, py: number): boolean => {
+      const obstacles = scene.obstacles ?? [];
+      if (obstacles.length === 0) return false;
+      const m = 4;
+      for (const h of scene.hotspots) {
+        if (
+          px >= h.rect.x - m &&
+          px <= h.rect.x + h.rect.w + m &&
+          py >= h.rect.y - m &&
+          py <= h.rect.y + h.rect.h + m
+        ) {
+          return false; // doors and NPCs must stay approachable
+        }
+      }
+      for (const o of obstacles) {
+        if (px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [scene.obstacles, scene.hotspots]
+  );
 
   // Keyboard
   useEffect(() => {
@@ -109,7 +142,7 @@ export function GameCanvas({
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // --- Move ---
+      // --- Move (with obstacle collision; slide along the blocked axis) ---
       const p = playerRef.current;
       if (!pausedRef.current) {
         const keys = keysRef.current;
@@ -121,8 +154,20 @@ export function GameCanvas({
         if (keys["arrowdown"] || keys["s"]) vd += 1;
         if (vx !== 0) p.dir = vx > 0 ? 1 : -1;
         p.moving = vx !== 0 || vd !== 0;
-        p.x = Math.max(2, Math.min(98, p.x + vx * SPEED_X * dt));
-        p.depth = Math.max(0, Math.min(1, p.depth + vd * SPEED_DEPTH * dt));
+
+        const footY = (depth: number) =>
+          bandTop + (BAND_BOTTOM - bandTop) * depth;
+        const nx = Math.max(2, Math.min(98, p.x + vx * SPEED_X * dt));
+        const nd = Math.max(0, Math.min(1, p.depth + vd * SPEED_DEPTH * dt));
+
+        if (!isBlocked(nx, footY(nd))) {
+          p.x = nx;
+          p.depth = nd;
+        } else if (!isBlocked(nx, footY(p.depth))) {
+          p.x = nx; // slide horizontally along the obstacle
+        } else if (!isBlocked(p.x, footY(nd))) {
+          p.depth = nd; // slide in depth along the obstacle
+        }
       } else {
         p.moving = false;
       }
@@ -244,7 +289,7 @@ export function GameCanvas({
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [scene, sprite, playerFoot]);
+  }, [scene, sprite, playerFoot, isBlocked, bandTop]);
 
   return <canvas ref={canvasRef} className="block h-full w-full" />;
 }

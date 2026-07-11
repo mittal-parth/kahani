@@ -63,6 +63,11 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+function stripDataUrl(dataUrl: string): string {
+  const comma = dataUrl.indexOf(",");
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+}
+
 export function World() {
   const [phase, setPhase] = useState<Phase>("select");
   const [premise, setPremise] = useState<Premise | null>(null);
@@ -145,27 +150,38 @@ export function World() {
   /* ---------------- boot ---------------- */
 
   const begin = useCallback(
-    async (chosen: Premise) => {
-      setPremise(chosen);
+    async (idea: string) => {
       setPhase("booting");
       setError(null);
       setScene(null);
       setSprite(null);
       setDialogue(null);
+      setPremise(null);
       scenesRef.current = new Map();
       interiorPromises.current = new Map();
 
-      // Sprite generates in parallel with the street; the game starts as soon
-      // as the street is ready (a marker stands in until the sprite lands).
-      setBootStatus("Painting your street + forging your character…");
-      const spritePromise = post<{ sprite: string }>("/api/sprite", {
-        premise: chosen,
-      })
-        .then(({ sprite: s }) => chromaKeySprite(s))
-        .then(setSprite)
-        .catch(() => {});
-
       try {
+        // 1) Expand the player's idea into a universe spec.
+        setBootStatus("Reading your idea…");
+        const { spec } = await post<{
+          spec: { title: string; setup: string; styleBible: string };
+        }>("/api/universe", { idea });
+        const chosen: Premise = {
+          id: "custom",
+          title: spec.title,
+          tagline: "",
+          setup: spec.setup,
+          emoji: "✦",
+          styleBible: spec.styleBible,
+          goal: "",
+          goalLabel: "",
+          goalEmoji: "",
+          clockLabel: "",
+        };
+        setPremise(chosen);
+
+        // 2) Paint the opening street.
+        setBootStatus("Painting your opening scene…");
         const { scene: street, questHook: hook } = await post<{
           scene: SceneData;
           questHook: string;
@@ -173,7 +189,19 @@ export function World() {
         setQuestHook(hook || "");
         showScene(street);
         setPhase("playing");
-        // Pre-generate every interior while the player walks around.
+
+        // 3) Forge the character FROM the street frame, so the sprite shares
+        //    the scene's exact art style and lighting (a marker stands in
+        //    until it lands).
+        post<{ sprite: string }>("/api/sprite", {
+          premise: chosen,
+          referenceFrame: stripDataUrl(street.image),
+        })
+          .then(({ sprite: s }) => chromaKeySprite(s))
+          .then(setSprite)
+          .catch(() => {});
+
+        // 4) Pre-generate every interior while the player walks around.
         street.hotspots
           .filter((h) => h.kind === "building")
           .forEach((h) => prefetchInterior(chosen, hook || "", h));
@@ -181,7 +209,6 @@ export function World() {
         setError(e instanceof Error ? e.message : "World generation failed.");
         setPhase("select");
       }
-      void spritePromise;
     },
     [prefetchInterior, showScene]
   );
@@ -290,7 +317,7 @@ export function World() {
   if (phase === "select") {
     return (
       <div>
-        <Landing onSelect={begin} />
+        <Landing onStart={begin} />
         {error && (
           <p className="pb-8 text-center text-sm font-semibold text-health">
             {error}
@@ -305,11 +332,11 @@ export function World() {
       <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
         <div className="shimmer relative mb-8 h-1.5 w-44 overflow-hidden rounded-full bg-ink/10" />
         <h2 className="font-display text-3xl font-extrabold text-ink">
-          {premise?.title}
+          {premise?.title ?? "Building your world"}
         </h2>
         <p className="mt-3 text-sm font-semibold text-inksoft">{bootStatus}</p>
         <p className="mt-1 text-xs font-medium text-inksoft/70">
-          street · character · interiors — all generated live
+          world · scene · character · interiors — all generated live
         </p>
       </div>
     );
