@@ -13,7 +13,7 @@ import type {
 
 /** Appended to every scene render so the world reads as one retro RPG overworld. */
 const PIXEL_STYLE =
-  "Rendered as a 2D top-down 16-bit retro RPG overworld screen (classic Pokemon Game Boy Advance style): flat top-down 2D view, chunky clean pixel-art, tile-based ground (paths, grass, paving) filling most of the frame, small buildings drawn front-on with roof visible above and ONE large centered door each, bright saturated flat colors, crisp hard pixel edges, no perspective, no isometric angle, no gradients, no blur.";
+  "Rendered as a strict top-view 2D 16-bit retro RPG overworld map (classic Pokemon Game Boy Advance style, camera looking straight down): flat bird's-eye view, chunky clean pixel-art, tile-based ground (paths, grass, paving) filling most of the frame, small buildings seen from above with their entrance door clearly marked on the near edge, bright saturated flat colors, crisp hard pixel edges, no perspective, no isometric angle, no gradients, no blur.";
 
 const TEXT_MODEL = process.env.TEXT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -114,29 +114,27 @@ export async function expandUniverse(idea: string): Promise<UniverseSpec> {
 /* Walkability — a vision pass over the ACTUAL generated frame         */
 /* ------------------------------------------------------------------ */
 
+const GRID_W = 24;
+const GRID_H = 14;
+
 const walkabilitySchema = {
   type: Type.OBJECT,
   properties: {
-    groundTop: {
-      type: Type.INTEGER,
-      description:
-        "The y percent (0-100 from the top) where walkable ground begins in this image. The player may only walk below this line.",
-    },
-    obstacles: {
+    walkGrid: {
       type: Type.ARRAY,
+      items: { type: Type.STRING },
       description:
-        "Up to 8 boxes over DISCRETE solid objects the player clearly cannot stand on: a water body, a parked vehicle, a market stall, a counter, a fire. Each box tight around one object. NEVER box open street, floor, path, or ground — most of the walkable area must remain open. Ignore small clutter and background buildings above the ground plane.",
-      items: rectSchema,
+        "Exactly 14 strings, one per grid row top-to-bottom, each EXACTLY 24 characters ('0' or '1'), dividing the image into a 24-wide x 14-tall grid. '1' = the player CANNOT stand there (building, wall, water, tree, fence, rock, furniture, counter). '0' = open walkable ground (path, grass, plaza, floor). Doorways count as '0'. Be precise: align cells with what is actually in the image.",
     },
   },
-  required: ["groundTop", "obstacles"],
+  required: ["walkGrid"],
 };
 
 async function analyzeWalkability(
   b64: string,
   mimeType: string,
   keepClearNote: string
-): Promise<{ groundTop: number; obstacles: Rect[] }> {
+): Promise<{ walkGrid: number[][] }> {
   try {
     const res = await ai().models.generateContent({
       model: TEXT_MODEL,
@@ -153,39 +151,26 @@ async function analyzeWalkability(
       },
     });
     if (!res.text) throw new Error("empty walkability");
-    const parsed = JSON.parse(res.text) as {
-      groundTop: number;
-      obstacles: Rect[];
-    };
-    const groundTop = Math.max(28, Math.min(80, Math.round(parsed.groundTop)));
-    let obstacles = (parsed.obstacles ?? []).slice(0, 8).map(clampRect);
-
-    // Safety cap: the walk band must stay mostly open. An over-eager vision
-    // pass that boxes the whole street would freeze the player in place —
-    // drop the largest boxes until coverage is sane.
-    const coverage = (boxes: Rect[]): number => {
-      let blocked = 0;
-      let total = 0;
-      for (let x = 2; x <= 98; x += 4) {
-        for (let y = groundTop; y <= 92; y += 4) {
-          total++;
-          if (boxes.some((o) => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h)) {
-            blocked++;
-          }
-        }
-      }
-      return total ? blocked / total : 0;
-    };
-    while (obstacles.length > 0 && coverage(obstacles) > 0.5) {
-      obstacles = [...obstacles]
-        .sort((a, b) => b.w * b.h - a.w * a.h)
-        .slice(1);
+    const parsed = JSON.parse(res.text) as { walkGrid: string[] };
+    const rows = (parsed.walkGrid ?? []).slice(0, GRID_H);
+    const grid: number[][] = [];
+    for (let r = 0; r < GRID_H; r++) {
+      const src = (rows[r] ?? "").padEnd(GRID_W, "0").slice(0, GRID_W);
+      grid.push([...src].map((c) => (c === "1" ? 1 : 0)));
     }
-
-    return { groundTop, obstacles };
+    // Safety: the map must stay mostly open — an over-blocked mask would
+    // freeze the player, so fail open instead.
+    const blockedCells = grid.flat().filter(Boolean).length;
+    if (blockedCells / (GRID_W * GRID_H) > 0.75) {
+      console.warn("[analyzeWalkability] over-blocked mask; failing open");
+      return { walkGrid: grid.map((row) => row.map(() => 0)) };
+    }
+    return { walkGrid: grid };
   } catch (err) {
     console.error("[analyzeWalkability] falling back to open ground:", err);
-    return { groundTop: 58, obstacles: [] };
+    return {
+      walkGrid: Array.from({ length: GRID_H }, () => new Array(GRID_W).fill(0)),
+    };
   }
 }
 
@@ -326,7 +311,7 @@ export async function generateStreetScene(
   const walk = await analyzeWalkability(
     img.b64,
     img.mimeType,
-    "Do include boxes over any water, crowds, vehicles, and stalls."
+    "Mark water, crowds, vehicles, stalls, trees, and buildings as 1."
   );
 
   const hotspots: Hotspot[] = spec.buildings.slice(0, 3).map((b, i) => ({
@@ -346,8 +331,7 @@ export async function generateStreetScene(
     ambient: spec.ambient,
     image: toDataUrl(img.b64, img.mimeType),
     hotspots,
-    groundTop: walk.groundTop,
-    obstacles: walk.obstacles,
+    walkGrid: walk.walkGrid,
     questHook: spec.questHook,
   };
 }
@@ -408,7 +392,7 @@ export async function generateInteriorScene(
   const walk = await analyzeWalkability(
     img.b64,
     img.mimeType,
-    "Do NOT box the single main character (the shopkeeper/NPC) — the player must be able to approach them. Do box counters, furniture, and any water or fire."
+    "Do NOT mark the single main character (the shopkeeper/NPC) as blocked — the player must approach them. Mark counters, furniture, walls, water, and fire as 1."
   );
 
   const hotspots: Hotspot[] = [
@@ -437,8 +421,7 @@ export async function generateInteriorScene(
     hotspots,
     npc: spec.npc,
     parentId: "street",
-    groundTop: walk.groundTop,
-    obstacles: walk.obstacles,
+    walkGrid: walk.walkGrid,
     clueIndex: building.clueIndex,
   };
 }
