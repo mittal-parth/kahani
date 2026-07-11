@@ -8,7 +8,12 @@ import type {
   NpcDef,
   Rect,
   SceneData,
+  StoryArc,
 } from "./universe";
+
+/** Appended to every scene render so the world reads as one isometric game. */
+const ISO_STYLE =
+  "Rendered as an isometric 3/4 high-angle video-game diorama: elevated camera looking down at ~40 degrees, clean readable geometry, game-art composition.";
 
 const TEXT_MODEL = process.env.TEXT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -46,29 +51,63 @@ const universeSchema = {
     styleBible: {
       type: Type.STRING,
       description:
-        "One sentence of concrete art direction that every frame of this world will share: rendering style, lighting, palette, mood, camera. e.g. 'Painterly dusk light, warm ochre palette, 35mm film still.'",
+        "One sentence of concrete art direction that every frame of this world will share: rendering style, lighting, palette, mood. e.g. 'Painterly dusk light, warm ochre palette, soft game-art rendering.'",
+    },
+    story: {
+      type: Type.OBJECT,
+      description:
+        "The ONE hidden story this whole world converges toward. Not a sandbox — a mystery with an answer.",
+      properties: {
+        goal: {
+          type: Type.STRING,
+          description:
+            "Player-facing objective, one line, max 12 words. e.g. 'Find out who locked the brass chest — and why.'",
+        },
+        secret: {
+          type: Type.STRING,
+          description:
+            "The hidden truth behind the goal, 1-2 sentences. Revealed only at the finale.",
+        },
+        clues: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            "Exactly 3 concrete clues that together expose the secret. Each will be guarded by one character. Each one line.",
+        },
+      },
+      required: ["goal", "secret", "clues"],
     },
   },
-  required: ["title", "setup", "styleBible"],
+  required: ["title", "setup", "styleBible", "story"],
 };
 
-export type UniverseSpec = { title: string; setup: string; styleBible: string };
+export type UniverseSpec = {
+  title: string;
+  setup: string;
+  styleBible: string;
+  story: StoryArc;
+};
 
-/** Expand a player's freeform scene idea into a playable universe spec. */
+/** Expand a player's freeform scene idea into a playable universe + story arc. */
 export async function expandUniverse(idea: string): Promise<UniverseSpec> {
   const res = await ai().models.generateContent({
     model: TEXT_MODEL,
-    contents: `PLAYER'S IDEA FOR THE OPENING SCENE / WORLD:\n${idea}\n\nTurn this into a playable adventure-game universe.`,
+    contents: `PLAYER'S IDEA FOR THE OPENING SCENE / WORLD:\n${idea}\n\nTurn this into a playable adventure-game universe with ONE convergent mystery.`,
     config: {
       systemInstruction:
-        "You are the creative director of an explorable adventure game. Honor the player's idea — its place, era, tone, and any named details — and sharpen it into a game-ready spec. If the idea names no setting, choose an evocative one that fits it. Return ONLY the structured object.",
+        "You are the creative director of an explorable adventure game. Honor the player's idea — its place, era, tone, and any named details — and sharpen it into a game-ready spec. Design a single tight mystery: a goal, a hidden secret, and exactly 3 clues that converge on it. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: universeSchema,
       temperature: 1.0,
     },
   });
   if (!res.text) throw new Error("Empty universe spec from text model.");
-  return JSON.parse(res.text) as UniverseSpec;
+  const spec = JSON.parse(res.text) as UniverseSpec;
+  spec.story.clues = (spec.story.clues ?? []).slice(0, 3);
+  while (spec.story.clues.length < 3) {
+    spec.story.clues.push("A detail someone here is hiding.");
+  }
+  return spec;
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +143,7 @@ async function analyzeWalkability(
       contents: [
         { inlineData: { data: b64, mimeType } },
         {
-          text: `This is a frame from a 2D adventure game. The player character walks on the ground plane in the lower part of the image. Map its walkability. ${keepClearNote} Return ONLY the structured object.`,
+          text: `This is an isometric frame from an adventure game. The player character walks on the visible ground plane (streets, floors, boardwalks). Map its walkability. ${keepClearNote} Return ONLY the structured object.`,
         },
       ],
       config: {
@@ -148,12 +187,12 @@ const streetSchema = {
     imagePrompt: {
       type: Type.STRING,
       description:
-        "Rich prompt for a WIDE eye-level street/exterior shot. The lower third must be open walkable ground with NO people in the near foreground. Buildings with distinct doorways line the scene. Authentic, era- and place-faithful detail for this universe. No text in image.",
+        "Rich prompt for a WIDE isometric 3/4 high-angle game-diorama shot of this street/exterior. The lower half must be open walkable ground with NO people in the near foreground. Buildings with distinct doorways line the scene. Authentic, era- and place-faithful detail for this universe. No text in image.",
     },
     buildings: {
       type: Type.ARRAY,
       description:
-        "Exactly 3 enterable places, positioned where their doorways appear in the image.",
+        "Exactly 3 enterable places, positioned where their doorways appear in the image. Building 1 relates to clue 1, building 2 to clue 2, building 3 to clue 3.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -180,7 +219,7 @@ const interiorSchema = {
     imagePrompt: {
       type: Type.STRING,
       description:
-        "Rich prompt for a WIDE interior shot of this place with ONE character (the NPC) visible mid-frame. Lower third open floor, walkable, no other people in the near foreground. Authentic, era- and place-faithful detail for this universe. No text in image.",
+        "Rich prompt for a WIDE isometric 3/4 high-angle game-diorama shot of this interior with ONE character (the NPC) visible mid-frame. Lower half open walkable floor, no other people in the near foreground. Authentic, era- and place-faithful detail for this universe. No text in image.",
     },
     npc: {
       type: Type.OBJECT,
@@ -211,14 +250,19 @@ const interiorSchema = {
 };
 
 export async function generateStreetScene(
-  premise: Premise
+  premise: Premise,
+  story: StoryArc
 ): Promise<SceneData & { questHook: string }> {
   const res = await ai().models.generateContent({
     model: TEXT_MODEL,
     contents: [
       `UNIVERSE: ${premise.title} — ${premise.setup}`,
       `ART DIRECTION: ${premise.styleBible}`,
-      "Design the opening explorable street for this universe.",
+      `THE STORY THIS WORLD CONVERGES ON — goal: ${story.goal}`,
+      `Clue 1: ${story.clues[0]}`,
+      `Clue 2: ${story.clues[1]}`,
+      `Clue 3: ${story.clues[2]}`,
+      "Design the opening explorable street. Each of the 3 buildings must plausibly house the keeper of its matching clue. Set questHook to the story goal, phrased for the player.",
     ].join("\n"),
     config: {
       systemInstruction:
@@ -237,7 +281,11 @@ export async function generateStreetScene(
     buildings: { name: string; hint: string; interiorPrompt: string; rect: Rect }[];
   };
 
-  const img = await generateImage(spec.imagePrompt, premise.styleBible, null);
+  const img = await generateImage(
+    `${spec.imagePrompt} ${ISO_STYLE}`,
+    premise.styleBible,
+    null
+  );
 
   // Ground the collision map in the ACTUAL pixels that came back.
   const walk = await analyzeWalkability(
@@ -246,13 +294,14 @@ export async function generateStreetScene(
     "Do include boxes over any water, crowds, vehicles, and stalls."
   );
 
-  const hotspots: Hotspot[] = spec.buildings.slice(0, 4).map((b, i) => ({
+  const hotspots: Hotspot[] = spec.buildings.slice(0, 3).map((b, i) => ({
     id: `b${i}`,
     kind: "building",
     name: b.name,
     hint: b.hint,
     rect: clampRect(b.rect),
     interiorPrompt: b.interiorPrompt,
+    clueIndex: i,
   }));
 
   return {
@@ -270,9 +319,19 @@ export async function generateStreetScene(
 
 export async function generateInteriorScene(
   premise: Premise,
-  building: { id: string; name: string; interiorPrompt: string },
-  questHook: string
+  building: {
+    id: string;
+    name: string;
+    interiorPrompt: string;
+    clueIndex?: number;
+  },
+  questHook: string,
+  story?: StoryArc
 ): Promise<SceneData> {
+  const clue =
+    story && typeof building.clueIndex === "number"
+      ? story.clues[building.clueIndex]
+      : null;
   const res = await ai().models.generateContent({
     model: TEXT_MODEL,
     contents: [
@@ -280,8 +339,13 @@ export async function generateInteriorScene(
       `ART DIRECTION: ${premise.styleBible}`,
       `WORLD QUEST HOOK: ${questHook}`,
       `PLACE: "${building.name}" — ${building.interiorPrompt}`,
-      "Design the interior of this place and the single NPC inside it. The NPC should know something connected to the quest hook.",
-    ].join("\n"),
+      clue
+        ? `THIS PLACE'S NPC GUARDS THIS CLUE (they know it and can be persuaded to share it): ${clue}`
+        : "",
+      "Design the interior of this place and the single NPC inside it. Their persona must make them a believable keeper of the clue above.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     config: {
       systemInstruction:
         "You are the level + character designer of an explorable adventure game. Percent-coordinate boxes must match where things appear in the image you describe. Return ONLY the structured object.",
@@ -300,7 +364,11 @@ export async function generateInteriorScene(
     exitZone: Rect;
   };
 
-  const img = await generateImage(spec.imagePrompt, premise.styleBible, null);
+  const img = await generateImage(
+    `${spec.imagePrompt} ${ISO_STYLE}`,
+    premise.styleBible,
+    null
+  );
 
   const walk = await analyzeWalkability(
     img.b64,
@@ -336,6 +404,7 @@ export async function generateInteriorScene(
     parentId: "street",
     groundTop: walk.groundTop,
     obstacles: walk.obstacles,
+    clueIndex: building.clueIndex,
   };
 }
 
@@ -357,7 +426,7 @@ export async function generateSprite(
     referenceFrame
       ? "CRITICAL: render the character in EXACTLY the same art style, rendering technique, lighting direction, and color grade as the reference image, as if painted by the same artist for the same scene."
       : `Style: ${premise.styleBible}`,
-    "Single character, standing, relaxed, facing right, full body head to feet.",
+    "Single character, standing, relaxed, facing right, full body head to feet, seen from a 3/4 high-angle isometric game perspective (slightly from above) to match the scene camera.",
     "Isolated on a PURE WHITE background, no shadow, no ground, no text, no border. Character fills most of the frame height.",
   ].join(" ");
   const img = await generateImage(
@@ -377,24 +446,30 @@ const dialogueSchema = {
   properties: {
     line: {
       type: Type.STRING,
-      description: "The NPC's spoken reply, max 30 words, in-character.",
+      description: "The NPC's spoken reply, max 25 words, in-character.",
     },
     options: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: "Exactly 3 short reply options for the player, 2-7 words each.",
+      description:
+        "Exactly 3 short reply options for the player, 2-7 words each. Empty when done is true.",
     },
     questUpdate: {
       type: Type.STRING,
       description:
         "When this exchange moves the story, the player's updated one-line objective. Empty otherwise.",
     },
+    clueRevealed: {
+      type: Type.BOOLEAN,
+      description:
+        "True ONLY on the turn where you actually reveal the guarded clue to the player.",
+    },
     done: {
       type: Type.BOOLEAN,
-      description: "True when the NPC naturally closes the conversation.",
+      description: "True when the NPC closes the conversation.",
     },
   },
-  required: ["line", "options", "done"],
+  required: ["line", "options", "clueRevealed", "done"],
 };
 
 export async function generateDialogue(
@@ -403,29 +478,50 @@ export async function generateDialogue(
   sceneTitle: string,
   questHook: string,
   history: DialogueTurn[],
-  playerLine: string | null
+  playerLine: string | null,
+  storyCtx?: { clue: string | null; clueFound: boolean; exchanges: number }
 ): Promise<DialogueResponse> {
   const lines: string[] = [
     `UNIVERSE: ${premise.title} — ${premise.setup}`,
     `SCENE: ${sceneTitle}`,
     `QUEST THREAD: ${questHook}`,
     `YOU ARE: ${npc.name}, ${npc.role}. ${npc.persona}`,
-    "",
-    "CONVERSATION SO FAR:",
-    ...history.map((t) => `${t.speaker === "npc" ? npc.name : "Player"}: ${t.text}`),
   ];
-  if (playerLine) lines.push(`Player: ${playerLine}`);
+  if (storyCtx?.clue && !storyCtx.clueFound) {
+    lines.push(`THE CLUE YOU GUARD: ${storyCtx.clue}`);
+  }
   lines.push(
     "",
-    "Reply in character. Keep it alive and specific; drip the quest thread forward. Offer 3 reply options."
+    "CONVERSATION SO FAR:",
+    ...history.map((t) => `${t.speaker === "npc" ? npc.name : "Player"}: ${t.text}`)
   );
+  if (playerLine) lines.push(`Player: ${playerLine}`);
+
+  const exchanges = storyCtx?.exchanges ?? history.filter((t) => t.speaker === "player").length;
+  lines.push("", "Reply in character, brief and specific.");
+  if (storyCtx?.clue && !storyCtx.clueFound) {
+    if (exchanges >= 2) {
+      lines.push(
+        "The player has earned it — reveal your guarded clue THIS turn, woven naturally into your line, and set clueRevealed=true."
+      );
+    } else {
+      lines.push(
+        "Move fast: you may tease, but reveal the guarded clue by the second exchange at the latest. When you reveal it, set clueRevealed=true."
+      );
+    }
+  }
+  if (exchanges >= 3 || storyCtx?.clueFound) {
+    lines.push(
+      "This conversation has served its purpose. Close it warmly THIS turn: point the player onward (other doors hold the rest), set done=true, options=[]."
+    );
+  }
 
   const res = await ai().models.generateContent({
     model: TEXT_MODEL,
     contents: lines.join("\n"),
     config: {
       systemInstruction:
-        "You are an NPC in an explorable adventure game. Speak naturally and briefly — these lines are voiced aloud. Never break character, never mention being an AI. Return ONLY the structured object.",
+        "You are an NPC in an explorable adventure game with ONE convergent mystery. Conversations are short and purposeful — a few exchanges, never small talk loops. Speak naturally and briefly; these lines are voiced aloud. Never break character, never mention being an AI. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: dialogueSchema,
       temperature: 1.0,
@@ -433,9 +529,74 @@ export async function generateDialogue(
   });
   if (!res.text) throw new Error("Empty dialogue from text model.");
   const out = JSON.parse(res.text) as DialogueResponse;
-  out.options = (out.options ?? []).slice(0, 3);
-  while (out.options.length < 3) out.options.push("Hmm… tell me more.");
+  if (out.done) {
+    out.options = [];
+  } else {
+    out.options = (out.options ?? []).slice(0, 3);
+    while (out.options.length < 3) out.options.push("Hmm… tell me more.");
+  }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Finale — the story converges                                        */
+/* ------------------------------------------------------------------ */
+
+const finaleSchema = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "Ending title, 2-5 words." },
+    resolution: {
+      type: Type.STRING,
+      description:
+        "The reveal, max 70 words, second person: how the three clues fit together and the secret they expose. A satisfying close.",
+    },
+    imagePrompt: {
+      type: Type.STRING,
+      description:
+        "Prompt for the closing frame: the moment of revelation, isometric 3/4 game-diorama view, consistent with the world. No text in image.",
+    },
+  },
+  required: ["title", "resolution", "imagePrompt"],
+};
+
+export async function generateFinale(
+  premise: Premise,
+  story: StoryArc
+): Promise<{ title: string; resolution: string; image: string }> {
+  const res = await ai().models.generateContent({
+    model: TEXT_MODEL,
+    contents: [
+      `UNIVERSE: ${premise.title} — ${premise.setup}`,
+      `GOAL: ${story.goal}`,
+      `THE SECRET: ${story.secret}`,
+      `CLUES THE PLAYER GATHERED: ${story.clues.join(" · ")}`,
+      "Write the finale: the moment the three clues converge and the secret comes out.",
+    ].join("\n"),
+    config: {
+      systemInstruction:
+        "You are the narrative director closing an adventure game's mystery. Land the reveal cleanly. Return ONLY the structured object.",
+      responseMimeType: "application/json",
+      responseSchema: finaleSchema,
+      temperature: 1.0,
+    },
+  });
+  if (!res.text) throw new Error("Empty finale from text model.");
+  const spec = JSON.parse(res.text) as {
+    title: string;
+    resolution: string;
+    imagePrompt: string;
+  };
+  const img = await generateImage(
+    `${spec.imagePrompt} ${ISO_STYLE}`,
+    premise.styleBible,
+    null
+  );
+  return {
+    title: spec.title,
+    resolution: spec.resolution,
+    image: toDataUrl(img.b64, img.mimeType),
+  };
 }
 
 /* ------------------------------------------------------------------ */

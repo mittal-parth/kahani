@@ -13,6 +13,10 @@ type DialogueRequest = {
   questHook: string;
   history: DialogueTurn[];
   playerLine: string | null;
+  /** The clue this NPC guards + whether it's already found + exchange count. */
+  clue?: string | null;
+  clueFound?: boolean;
+  exchanges?: number;
 };
 
 export async function POST(req: NextRequest) {
@@ -32,7 +36,14 @@ export async function POST(req: NextRequest) {
       body.sceneTitle ?? "",
       body.questHook ?? "",
       body.history ?? [],
-      body.playerLine ?? null
+      body.playerLine ?? null,
+      {
+        clue: body.clue ?? null,
+        clueFound: Boolean(body.clueFound),
+        exchanges:
+          body.exchanges ??
+          (body.history ?? []).filter((t) => t.speaker === "player").length,
+      }
     );
     return NextResponse.json(reply);
   } catch (err) {

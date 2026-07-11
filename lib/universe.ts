@@ -19,6 +19,18 @@ export type Hotspot = {
   rect: Rect;
   /** For buildings: the prompt seed used to generate the interior. */
   interiorPrompt?: string;
+  /** Which story clue this building's NPC guards. */
+  clueIndex?: number;
+};
+
+/** The hidden arc the whole world converges toward. */
+export type StoryArc = {
+  /** Player-facing objective. */
+  goal: string;
+  /** The hidden truth, revealed only at the finale. */
+  secret: string;
+  /** Three clues, each guarded by one NPC. */
+  clues: string[];
 };
 
 export type SceneData = {
@@ -37,6 +49,8 @@ export type SceneData = {
   groundTop?: number;
   /** Vision-derived no-walk boxes: water, people, stalls, furniture, vehicles. */
   obstacles?: Rect[];
+  /** For interiors: which story clue this scene's NPC guards. */
+  clueIndex?: number;
 };
 
 export type DialogueTurn = {
@@ -49,5 +63,7 @@ export type DialogueResponse = {
   options: string[];
   /** Updated one-line quest objective, when the conversation moves the story. */
   questUpdate?: string;
+  /** True on the turn where this NPC's guarded clue is revealed. */
+  clueRevealed?: boolean;
   done: boolean;
 };

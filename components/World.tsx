@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Volume2, VolumeX } from "lucide-react";
+import { Search, Volume2, VolumeX } from "lucide-react";
 import type { Premise } from "@/lib/types";
 import type {
   DialogueResponse,
   DialogueTurn,
   Hotspot,
   SceneData,
+  StoryArc,
 } from "@/lib/universe";
 import { Landing } from "./Landing";
 import { GameCanvas } from "./GameCanvas";
@@ -73,6 +74,14 @@ export function World() {
   const [premise, setPremise] = useState<Premise | null>(null);
   const [scene, setScene] = useState<SceneData | null>(null);
   const [questHook, setQuestHook] = useState("");
+  const [story, setStory] = useState<StoryArc | null>(null);
+  const [cluesFound, setCluesFound] = useState<boolean[]>([false, false, false]);
+  const [finale, setFinale] = useState<{
+    title: string;
+    resolution: string;
+    image: string;
+  } | null>(null);
+  const [finaleLoading, setFinaleLoading] = useState(false);
   const [sprite, setSprite] = useState<HTMLCanvasElement | null>(null);
   const [bootStatus, setBootStatus] = useState("Dreaming up the world…");
   const [entering, setEntering] = useState<string | null>(null);
@@ -131,11 +140,17 @@ export function World() {
   }, []);
 
   const prefetchInterior = useCallback(
-    (thePremise: Premise, hook: string, h: Hotspot) => {
+    (thePremise: Premise, arc: StoryArc, hook: string, h: Hotspot) => {
       if (!h.interiorPrompt || interiorPromises.current.has(h.id)) return;
       const p = post<{ scene: SceneData }>("/api/scene", {
         premise: thePremise,
-        building: { id: h.id, name: h.name, interiorPrompt: h.interiorPrompt },
+        story: arc,
+        building: {
+          id: h.id,
+          name: h.name,
+          interiorPrompt: h.interiorPrompt,
+          clueIndex: h.clueIndex,
+        },
         questHook: hook,
       }).then(({ scene: s }) => {
         scenesRef.current.set(s.id, s);
@@ -160,11 +175,21 @@ export function World() {
       scenesRef.current = new Map();
       interiorPromises.current = new Map();
 
+      setStory(null);
+      setCluesFound([false, false, false]);
+      setFinale(null);
+      setFinaleLoading(false);
+
       try {
-        // 1) Expand the player's idea into a universe spec.
+        // 1) Expand the player's idea into a universe + hidden story arc.
         setBootStatus("Reading your idea…");
         const { spec } = await post<{
-          spec: { title: string; setup: string; styleBible: string };
+          spec: {
+            title: string;
+            setup: string;
+            styleBible: string;
+            story: StoryArc;
+          };
         }>("/api/universe", { idea });
         const chosen: Premise = {
           id: "custom",
@@ -179,14 +204,15 @@ export function World() {
           clockLabel: "",
         };
         setPremise(chosen);
+        setStory(spec.story);
 
         // 2) Paint the opening street.
         setBootStatus("Painting your opening scene…");
         const { scene: street, questHook: hook } = await post<{
           scene: SceneData;
           questHook: string;
-        }>("/api/scene", { premise: chosen });
-        setQuestHook(hook || "");
+        }>("/api/scene", { premise: chosen, story: spec.story });
+        setQuestHook(hook || spec.story.goal);
         showScene(street);
         setPhase("playing");
 
@@ -204,7 +230,9 @@ export function World() {
         // 4) Pre-generate every interior while the player walks around.
         street.hotspots
           .filter((h) => h.kind === "building")
-          .forEach((h) => prefetchInterior(chosen, hook || "", h));
+          .forEach((h) =>
+            prefetchInterior(chosen, spec.story, hook || spec.story.goal, h)
+          );
       } catch (e) {
         setError(e instanceof Error ? e.message : "World generation failed.");
         setPhase("select");
@@ -239,12 +267,12 @@ export function World() {
         return;
       }
 
-      if (h.kind === "building") {
+      if (h.kind === "building" && story) {
         setEntering(h.name);
         try {
           let interior = scenesRef.current.get(h.id);
           if (!interior) {
-            prefetchInterior(premise, questHook, h);
+            prefetchInterior(premise, story, questHook, h);
             interior = await interiorPromises.current.get(h.id);
           }
           if (interior) showScene(interior);
@@ -256,7 +284,7 @@ export function World() {
         }
       }
     },
-    [premise, scene, questHook, prefetchInterior, showScene, speak, stopVoice]
+    [premise, scene, story, questHook, prefetchInterior, showScene, speak, stopVoice]
   );
 
   const onSay = useCallback(
@@ -267,6 +295,8 @@ export function World() {
         { speaker: "player", text: line },
       ];
       setDialogue({ ...dialogue, history, options: [], thinking: true });
+      const clueIndex = scene.clueIndex;
+      const hasClue = typeof clueIndex === "number" && story;
       try {
         const reply = await post<DialogueResponse>("/api/dialogue", {
           premise,
@@ -275,8 +305,24 @@ export function World() {
           questHook,
           history: dialogue.history,
           playerLine: line,
+          clue: hasClue ? story.clues[clueIndex] : null,
+          clueFound: hasClue ? cluesFound[clueIndex] : false,
+          exchanges: history.filter((t) => t.speaker === "player").length,
         });
         if (reply.questUpdate?.trim()) setQuestHook(reply.questUpdate.trim());
+        if (reply.clueRevealed && hasClue && !cluesFound[clueIndex]) {
+          setCluesFound((prev) => {
+            const next = [...prev];
+            next[clueIndex] = true;
+            const n = next.filter(Boolean).length;
+            setAmbient(
+              n >= next.length
+                ? "Final clue uncovered — the truth is within reach."
+                : `Clue uncovered (${n}/${next.length}).`
+            );
+            return next;
+          });
+        }
         setDialogue({
           npc: dialogue.npc,
           history: [...history, { speaker: "npc", text: reply.line }],
@@ -293,8 +339,29 @@ export function World() {
         });
       }
     },
-    [premise, scene, dialogue, questHook, speak]
+    [premise, scene, dialogue, questHook, story, cluesFound, speak]
   );
+
+  const allCluesFound = story ? cluesFound.every(Boolean) : false;
+
+  const runFinale = useCallback(async () => {
+    if (!premise || !story || finaleLoading) return;
+    stopVoice();
+    setDialogue(null);
+    setFinaleLoading(true);
+    try {
+      const { finale: f } = await post<{
+        finale: { title: string; resolution: string; image: string };
+      }>("/api/finale", { premise, story });
+      setFinale(f);
+      speak(f.resolution);
+    } catch {
+      setError("The ending slipped away. Try again.");
+      setTimeout(() => setError(null), 4000);
+    } finally {
+      setFinaleLoading(false);
+    }
+  }, [premise, story, finaleLoading, speak, stopVoice]);
 
   const closeDialogue = useCallback(() => {
     stopVoice();
@@ -307,6 +374,10 @@ export function World() {
     setPremise(null);
     setScene(null);
     setDialogue(null);
+    setStory(null);
+    setCluesFound([false, false, false]);
+    setFinale(null);
+    setFinaleLoading(false);
   }, [stopVoice]);
 
   // Global Esc: close dialogue handled in DialogueBox; nothing else here.
@@ -351,16 +422,45 @@ export function World() {
         onInteract={onInteract}
       />
 
-      {/* --- HUD: world / scene / quest --- */}
+      {/* --- HUD: world / scene / quest / clues --- */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-4">
-        <div className="panel max-w-sm rounded-2xl px-4 py-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-inksoft">
-            {premise.title} · {scene.title}
-          </p>
-          {questHook && (
-            <p className="mt-0.5 text-sm font-semibold leading-snug text-ink">
-              {questHook}
+        <div className="flex max-w-sm flex-col gap-2">
+          <div className="panel rounded-2xl px-4 py-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-inksoft">
+              {premise.title} · {scene.title}
             </p>
+            {questHook && (
+              <p className="mt-0.5 text-sm font-semibold leading-snug text-ink">
+                {questHook}
+              </p>
+            )}
+          </div>
+          {story && (
+            <div className="panel flex w-fit items-center gap-2 rounded-full px-3 py-1.5">
+              <Search size={12} strokeWidth={2.5} className="text-primary" />
+              <span className="flex gap-1">
+                {cluesFound.map((found, i) => (
+                  <span
+                    key={i}
+                    className={`h-1.5 w-4 rounded-full ${
+                      found ? "bg-primary" : "bg-ink/15"
+                    }`}
+                  />
+                ))}
+              </span>
+              <span className="text-[11px] font-bold tabular-nums text-ink">
+                {cluesFound.filter(Boolean).length}/{cluesFound.length} clues
+              </span>
+              {allCluesFound && !finale && (
+                <button
+                  onClick={runFinale}
+                  disabled={finaleLoading}
+                  className="pointer-events-auto ml-1 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-white transition enabled:hover:brightness-105 enabled:active:scale-95 disabled:opacity-60"
+                >
+                  {finaleLoading ? "Unraveling…" : "Unravel the truth"}
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
@@ -421,6 +521,49 @@ export function World() {
                 <span className="animate-breathe inline-block h-1.5 w-1.5 rounded-full bg-primary" />
                 stepping inside…
               </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- Finale --- */}
+      <AnimatePresence>
+        {finale && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 }}
+            className="absolute inset-0 z-40 overflow-y-auto bg-ink"
+          >
+            <img
+              src={finale.image}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-60"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
+            <div className="relative flex min-h-full flex-col items-center justify-end px-6 pb-14 text-center">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+                className="max-w-xl"
+              >
+                <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary2">
+                  The truth
+                </p>
+                <h2 className="mt-2 font-display text-4xl font-extrabold text-white">
+                  {finale.title}
+                </h2>
+                <p className="mt-4 text-base font-medium leading-relaxed text-white/90">
+                  {finale.resolution}
+                </p>
+                <button
+                  onClick={leaveWorld}
+                  className="mt-8 rounded-full bg-primary px-8 py-3.5 text-sm font-bold text-white shadow-soft transition hover:brightness-105 active:scale-95"
+                >
+                  Tell another story
+                </button>
+              </motion.div>
             </div>
           </motion.div>
         )}
