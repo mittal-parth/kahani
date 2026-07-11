@@ -95,7 +95,7 @@ export async function expandUniverse(idea: string): Promise<UniverseSpec> {
     contents: `PLAYER'S IDEA FOR THE OPENING SCENE / WORLD:\n${idea}\n\nTurn this into a playable adventure-game universe with ONE convergent mystery.`,
     config: {
       systemInstruction:
-        "You are the creative director of an explorable adventure game. Honor the player's idea — its place, era, tone, and any named details — and sharpen it into a game-ready spec. Design a single tight mystery: a goal, a hidden secret, and exactly 3 clues that converge on it. Return ONLY the structured object.",
+        "You are the creative director of an explorable adventure game rooted in India. Honor the player's idea — its named details, era, and tone. Unless the idea explicitly names a non-Indian setting, ground the world in India: real textures of its streets, ghats, hills, bazaars, monsoons, festivals, myths and folklore, with authentic names — never caricature. Design a single tight mystery: a goal, a hidden secret, and exactly 3 clues that converge on it. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: universeSchema,
       temperature: 1.0,
@@ -262,14 +262,27 @@ const interiorSchema = {
         role: { type: Type.STRING, description: "e.g. 'chaiwala', 'retired archivist'" },
         persona: {
           type: Type.STRING,
-          description: "2 sentences: temperament, what they know, what they want.",
+          description:
+            "2 sentences: temperament, what they know, what they want — and what they FEAR.",
         },
         opening: {
           type: Type.STRING,
-          description: "The spoken line they greet the player with, max 20 words.",
+          description:
+            "Their first spoken line when the player approaches — a dramatic hook that signals conflict, fear, or a secret in ≤18 words. May naturally include one Hindi/regional word (arre, beta, sahib…). Never a plain greeting.",
+        },
+        quirk: {
+          type: Type.STRING,
+          description:
+            "A distinctive verbal habit, e.g. 'ends questions with hain na?', 'speaks in hushed half-sentences', 'quotes his late wife'.",
+        },
+        voice: {
+          type: Type.STRING,
+          enum: ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"],
+          description:
+            "TTS voice fitting the character: Charon/Orus = deep older male; Fenrir = gravelly, intense; Puck/Zephyr = quick, energetic; Kore = warm neutral female; Aoede/Leda = bright younger female.",
         },
       },
-      required: ["name", "role", "persona", "opening"],
+      required: ["name", "role", "persona", "opening", "quirk", "voice"],
     },
     npcZone: {
       ...rectSchema,
@@ -482,13 +495,19 @@ const dialogueSchema = {
   properties: {
     line: {
       type: Type.STRING,
-      description: "The NPC's spoken reply, max 25 words, in-character.",
+      description:
+        "The NPC's spoken reply, 8-22 words, in-character. Every line must carry at least ONE of: a secret teased, a warning, a demand, an emotion spike, a concrete sensory detail, or a personal stake. Never filler, never a pleasantry.",
+    },
+    mood: {
+      type: Type.STRING,
+      enum: ["warm", "wary", "fearful", "urgent", "secretive", "amused", "angry"],
+      description: "The emotional register this line is delivered in.",
     },
     options: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
       description:
-        "Exactly 3 short reply options for the player, 2-7 words each. Empty when done is true.",
+        "Exactly 3 reply options, 2-7 words, each a genuinely DIFFERENT tactic (press harder / offer something / change subject). Empty when done is true.",
     },
     questUpdate: {
       type: Type.STRING,
@@ -505,7 +524,7 @@ const dialogueSchema = {
       description: "True when the NPC closes the conversation.",
     },
   },
-  required: ["line", "options", "clueRevealed", "done"],
+  required: ["line", "mood", "options", "clueRevealed", "done"],
 };
 
 export async function generateDialogue(
@@ -523,6 +542,7 @@ export async function generateDialogue(
     `QUEST THREAD: ${questHook}`,
     `YOU ARE: ${npc.name}, ${npc.role}. ${npc.persona}`,
   ];
+  if (npc.quirk) lines.push(`YOUR VERBAL QUIRK (use it): ${npc.quirk}`);
   if (storyCtx?.clue && !storyCtx.clueFound) {
     lines.push(`THE CLUE YOU GUARD: ${storyCtx.clue}`);
   }
@@ -557,7 +577,7 @@ export async function generateDialogue(
     contents: lines.join("\n"),
     config: {
       systemInstruction:
-        "You are an NPC in an explorable adventure game with ONE convergent mystery. Conversations are short and purposeful — a few exchanges, never small talk loops. Speak naturally and briefly; these lines are voiced aloud. Never break character, never mention being an AI. Return ONLY the structured object.",
+        "You are an NPC in a cinematic adventure game with ONE convergent mystery. You are a PERSON, not an information kiosk: you have fears, debts, grudges, and a stake in this story. Rules: (1) every line raises tension or reveals character — never neutral exposition; (2) react to WHAT the player says and HOW; (3) pepper speech naturally with Hindi/regional words matching the world's region (arre, beta, sahib, theek hai, bas) while staying clear in English; (4) use your verbal quirk; (5) conversations are short — a few charged exchanges, never small talk. These lines are voiced aloud, so write for the ear. Never break character, never mention being an AI. Return ONLY the structured object.",
       responseMimeType: "application/json",
       responseSchema: dialogueSchema,
       temperature: 1.0,
@@ -659,15 +679,20 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000): Buffer {
   return Buffer.concat([header, pcm]);
 }
 
-/** Synthesize a spoken line. Returns a data-URL WAV, or null on failure. */
+/**
+ * Synthesize a spoken line as a PERFORMANCE: an optional style direction
+ * (mood + character) shapes the delivery. Returns a data-URL WAV, or null.
+ */
 export async function synthesizeVoice(
   text: string,
-  voiceName = "Kore"
+  voiceName = "Kore",
+  style?: string
 ): Promise<string | null> {
+  const directed = style ? `${style}: "${text}"` : text;
   try {
     const res = await ai().models.generateContent({
       model: VOICE_MODEL,
-      contents: [{ parts: [{ text }] }],
+      contents: [{ parts: [{ text: directed }] }],
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: {

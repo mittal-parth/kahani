@@ -35,10 +35,16 @@ function webglAvailable(): boolean {
 type Phase = "select" | "booting" | "playing";
 
 const OPENING_OPTIONS = [
-  "Who are you?",
-  "What is this place?",
-  "I'm looking for something.",
+  "Who are you, really?",
+  "Something's wrong here. Talk.",
+  "I need your help.",
 ];
+
+/** Style direction handed to TTS so lines are performed, not read. */
+function voiceStyle(npc: { role?: string } | null, mood?: string): string {
+  const m = mood ? `in a ${mood} tone` : "with dramatic feeling";
+  return `As a ${npc?.role ?? "character"} in an Indian adventure story, say this ${m}`;
+}
 
 /** Turn a white-background sprite render into a transparent-canvas sprite. */
 async function chromaKeySprite(dataUrl: string): Promise<HTMLCanvasElement> {
@@ -124,23 +130,55 @@ export function World() {
     history: DialogueTurn[];
     options: string[];
     thinking: boolean;
+    mood?: string;
   } | null>(null);
 
   const scenesRef = useRef<Map<string, SceneData>>(new Map());
   const interiorPromises = useRef<Map<string, Promise<SceneData>>>(new Map());
+  // Preload caches — everything the player might do next is already made.
+  const voiceCache = useRef<Map<string, Promise<string | null>>>(new Map());
+  const dialogueCache = useRef<Map<string, Promise<DialogueResponse>>>(new Map());
+  const finalePromise = useRef<Promise<{
+    title: string;
+    resolution: string;
+    image: string;
+  } | null> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const voiceOnRef = useRef(voiceOn);
   voiceOnRef.current = voiceOn;
 
-  /* ---------------- voice ---------------- */
+  /* ---------------- voice (cached + performed) ---------------- */
 
-  const speak = useCallback(async (text: string) => {
-    if (!voiceOnRef.current || !text.trim()) return;
-    try {
-      const { audio } = await post<{ audio: string | null }>("/api/voice", {
+  const fetchVoice = useCallback(
+    (text: string, voice?: string, style?: string): Promise<string | null> => {
+      const key = `${voice ?? ""}|${style ?? ""}|${text}`;
+      const hit = voiceCache.current.get(key);
+      if (hit) return hit;
+      const p = post<{ audio: string | null }>("/api/voice", {
         text,
-      });
-      addCalls(1);
+        voice,
+        style,
+      })
+        .then(({ audio }) => {
+          addCalls(1);
+          // Don't pin a transient TTS failure — let a later call retry.
+          if (!audio) voiceCache.current.delete(key);
+          return audio;
+        })
+        .catch(() => {
+          voiceCache.current.delete(key);
+          return null;
+        });
+      voiceCache.current.set(key, p);
+      return p;
+    },
+    [addCalls]
+  );
+
+  const speak = useCallback(
+    async (text: string, voice?: string, style?: string) => {
+      if (!voiceOnRef.current || !text.trim()) return;
+      const audio = await fetchVoice(text, voice, style);
       if (!audio || !voiceOnRef.current) return;
       audioRef.current?.pause();
       const el = new Audio(audio);
@@ -149,10 +187,9 @@ export function World() {
       el.onended = () => setSpeaking(false);
       el.onerror = () => setSpeaking(false);
       await el.play().catch(() => setSpeaking(false));
-    } catch {
-      // voice is best-effort
-    }
-  }, [addCalls]);
+    },
+    [fetchVoice]
+  );
 
   const stopVoice = useCallback(() => {
     audioRef.current?.pause();
@@ -167,6 +204,45 @@ export function World() {
     setAmbient(s.ambient);
     setTimeout(() => setAmbient((a) => (a === s.ambient ? null : a)), 5000);
   }, []);
+
+  /**
+   * The moment an interior exists, pre-make the player's entire next minute:
+   * the NPC's opening line as spoken audio, plus the NPC's reply to EVERY
+   * one of the three opening choices — and the audio for those replies too.
+   * Walking in and talking is then instant end to end.
+   */
+  const prefetchConversation = useCallback(
+    (thePremise: Premise, arc: StoryArc, hook: string, s: SceneData) => {
+      const npc = s.npc;
+      if (!npc) return;
+      // opening line, performed
+      fetchVoice(npc.opening, npc.voice, voiceStyle(npc, "wary"));
+      const clue =
+        typeof s.clueIndex === "number" ? arc.clues[s.clueIndex] : null;
+      for (const option of OPENING_OPTIONS) {
+        const key = `${s.id}|${option}`;
+        if (dialogueCache.current.has(key)) continue;
+        const p = post<DialogueResponse>("/api/dialogue", {
+          premise: thePremise,
+          npc,
+          sceneTitle: s.title,
+          questHook: hook,
+          history: [{ speaker: "npc", text: npc.opening }],
+          playerLine: option,
+          clue,
+          clueFound: false,
+          exchanges: 1,
+        }).then((reply) => {
+          addCalls(1);
+          fetchVoice(reply.line, npc.voice, voiceStyle(npc, reply.mood));
+          return reply;
+        });
+        p.catch(() => dialogueCache.current.delete(key));
+        dialogueCache.current.set(key, p);
+      }
+    },
+    [addCalls, fetchVoice]
+  );
 
   const prefetchInterior = useCallback(
     (thePremise: Premise, arc: StoryArc, hook: string, h: Hotspot) => {
@@ -185,12 +261,13 @@ export function World() {
         scenesRef.current.set(s.id, s);
         addCalls(3); // interior = level-design text + image + walkability vision
         setInteriorsReady((r) => r + 1);
+        prefetchConversation(thePremise, arc, hook, s);
         return s;
       });
       p.catch(() => interiorPromises.current.delete(h.id));
       interiorPromises.current.set(h.id, p);
     },
-    [addCalls]
+    [addCalls, prefetchConversation]
   );
 
   /* ---------------- boot ---------------- */
@@ -205,6 +282,9 @@ export function World() {
       setPremise(null);
       scenesRef.current = new Map();
       interiorPromises.current = new Map();
+      voiceCache.current = new Map();
+      dialogueCache.current = new Map();
+      finalePromise.current = null;
 
       setStory(null);
       setCluesFound([false, false, false]);
@@ -271,12 +351,24 @@ export function World() {
           .forEach((h) =>
             prefetchInterior(chosen, spec.story, hook || spec.story.goal, h)
           );
+
+        // 5) Pre-generate the FINALE too — the ending is already known to the
+        //    story engine, so "Unravel the truth" can land instantly.
+        finalePromise.current = post<{
+          finale: { title: string; resolution: string; image: string };
+        }>("/api/finale", { premise: chosen, story: spec.story })
+          .then(({ finale: f }) => {
+            addCalls(2);
+            fetchVoice(f.resolution, "Charon", "As a storyteller closing a mystery, say this with slow gravity");
+            return f;
+          })
+          .catch(() => null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "World generation failed.");
         setPhase("select");
       }
     },
-    [prefetchInterior, showScene, addCalls]
+    [prefetchInterior, showScene, addCalls, fetchVoice]
   );
 
   /* ---------------- interaction ---------------- */
@@ -301,7 +393,7 @@ export function World() {
           options: OPENING_OPTIONS,
           thinking: false,
         });
-        speak(opening);
+        speak(opening, scene.npc.voice, voiceStyle(scene.npc, "wary"));
         return;
       }
 
@@ -336,18 +428,30 @@ export function World() {
       const clueIndex = scene.clueIndex;
       const hasClue = typeof clueIndex === "number" && story;
       try {
-        const reply = await post<DialogueResponse>("/api/dialogue", {
-          premise,
-          npc: dialogue.npc,
-          sceneTitle: scene.title,
-          questHook,
-          history: dialogue.history,
-          playerLine: line,
-          clue: hasClue ? story.clues[clueIndex] : null,
-          clueFound: hasClue ? cluesFound[clueIndex] : false,
-          exchanges: history.filter((t) => t.speaker === "player").length,
-        });
-        addCalls(1); // dialogue turn
+        // First exchange with a canned opener? The reply (and its audio) were
+        // pre-generated the moment this room finished building — instant.
+        const isFirstTurn =
+          history.filter((t) => t.speaker === "player").length === 1;
+        const cached = isFirstTurn
+          ? dialogueCache.current.get(`${scene.id}|${line}`)
+          : undefined;
+        let reply: DialogueResponse;
+        if (cached) {
+          reply = await cached;
+        } else {
+          reply = await post<DialogueResponse>("/api/dialogue", {
+            premise,
+            npc: dialogue.npc,
+            sceneTitle: scene.title,
+            questHook,
+            history: dialogue.history,
+            playerLine: line,
+            clue: hasClue ? story.clues[clueIndex] : null,
+            clueFound: hasClue ? cluesFound[clueIndex] : false,
+            exchanges: history.filter((t) => t.speaker === "player").length,
+          });
+          addCalls(1); // dialogue turn
+        }
         if (reply.questUpdate?.trim()) setQuestHook(reply.questUpdate.trim());
         if (reply.clueRevealed && hasClue && !cluesFound[clueIndex]) {
           setCluesFound((prev) => {
@@ -367,8 +471,9 @@ export function World() {
           history: [...history, { speaker: "npc", text: reply.line }],
           options: reply.done ? [] : reply.options,
           thinking: false,
+          mood: reply.mood,
         });
-        speak(reply.line);
+        speak(reply.line, dialogue.npc.voice, voiceStyle(dialogue.npc, reply.mood));
       } catch {
         setDialogue({
           ...dialogue,
@@ -389,12 +494,17 @@ export function World() {
     setDialogue(null);
     setFinaleLoading(true);
     try {
-      const { finale: f } = await post<{
-        finale: { title: string; resolution: string; image: string };
-      }>("/api/finale", { premise, story });
-      addCalls(2); // finale script + closing frame
+      // Pre-generated at boot; falls back to a live call if that failed.
+      let f = finalePromise.current ? await finalePromise.current : null;
+      if (!f) {
+        const res = await post<{
+          finale: { title: string; resolution: string; image: string };
+        }>("/api/finale", { premise, story });
+        f = res.finale;
+        addCalls(2);
+      }
       setFinale(f);
-      speak(f.resolution);
+      speak(f.resolution, "Charon", "As a storyteller closing a mystery, say this with slow gravity");
     } catch {
       setError("The ending slipped away. Try again.");
       setTimeout(() => setError(null), 4000);
@@ -420,6 +530,9 @@ export function World() {
     setFinaleLoading(false);
     setGenCalls(0);
     setInteriorsReady(0);
+    voiceCache.current = new Map();
+    dialogueCache.current = new Map();
+    finalePromise.current = null;
   }, [stopVoice]);
 
   // Global Esc: close dialogue handled in DialogueBox; nothing else here.
@@ -655,6 +768,7 @@ export function World() {
               history={dialogue.history}
               options={dialogue.options}
               thinking={dialogue.thinking}
+              mood={dialogue.mood}
               speaking={speaking}
               voiceOn={voiceOn}
               onToggleVoice={() => setVoiceOn((v) => !v)}

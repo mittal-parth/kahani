@@ -40,9 +40,9 @@ export function Landing({ onStart }: { onStart: (idea: string) => void }) {
           Describe a scene. Walk into it.
         </p>
         <p className="mt-4 max-w-sm text-sm font-medium leading-relaxed text-inksoft">
-          Your words become a living, explorable world — streets, buildings,
-          characters, and voices, all generated as you play. WASD to move, E to
-          enter.
+          Any Indian street, myth, or monsoon becomes a living, explorable
+          world — places, characters, and voices generated as you play. WASD to
+          move, E to enter.
         </p>
       </motion.header>
 

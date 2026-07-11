@@ -8,6 +8,10 @@ export type NpcDef = {
   persona: string;
   /** The line the NPC opens with when the player approaches. */
   opening: string;
+  /** Distinctive verbal habit, e.g. "ends sentences with 'hain na?'". */
+  quirk?: string;
+  /** Gemini TTS prebuilt voice name chosen to fit this character. */
+  voice?: string;
 };
 
 export type Hotspot = {
@@ -67,5 +71,7 @@ export type DialogueResponse = {
   questUpdate?: string;
   /** True on the turn where this NPC's guarded clue is revealed. */
   clueRevealed?: boolean;
+  /** Emotional register of the line — drives the voice performance + UI. */
+  mood?: string;
   done: boolean;
 };

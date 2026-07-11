@@ -5,6 +5,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Send, Volume2, VolumeX } from "lucide-react";
 import type { DialogueTurn, NpcDef } from "@/lib/universe";
 
+const MOOD_COLOR: Record<string, string> = {
+  warm: "#6b8e5a",
+  wary: "#b3862f",
+  fearful: "#6d5f97",
+  urgent: "#c04a2f",
+  secretive: "#4a7c88",
+  amused: "#b3862f",
+  angry: "#b34a44",
+};
+
 export function DialogueBox({
   npc,
   history,
@@ -12,6 +22,7 @@ export function DialogueBox({
   thinking,
   speaking,
   voiceOn,
+  mood,
   onToggleVoice,
   onSay,
   onClose,
@@ -22,6 +33,7 @@ export function DialogueBox({
   thinking: boolean;
   speaking: boolean;
   voiceOn: boolean;
+  mood?: string;
   onToggleVoice: () => void;
   onSay: (line: string) => void;
   onClose: () => void;
@@ -30,9 +42,27 @@ export function DialogueBox({
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastNpcLine = [...history].reverse().find((t) => t.speaker === "npc");
 
+  // Typewriter: the latest NPC line spells itself out like game dialogue.
+  const [typed, setTyped] = useState(0);
+  useEffect(() => {
+    setTyped(0);
+    if (!lastNpcLine) return;
+    const iv = setInterval(() => {
+      setTyped((n) => {
+        if (n >= lastNpcLine.text.length) {
+          clearInterval(iv);
+          return n;
+        }
+        return n + 2;
+      });
+    }, 18);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastNpcLine?.text]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
-  }, [history.length, thinking]);
+  }, [history.length, thinking, typed]);
 
   // Number-key replies + Esc to leave.
   useEffect(() => {
@@ -67,6 +97,21 @@ export function DialogueBox({
           </p>
           <p className="mt-0.5 text-xs font-medium text-inksoft">{npc.role}</p>
         </div>
+        {mood && (
+          <span
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+            style={{
+              color: MOOD_COLOR[mood] ?? "#7c6d61",
+              backgroundColor: `${MOOD_COLOR[mood] ?? "#7c6d61"}18`,
+            }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: MOOD_COLOR[mood] ?? "#7c6d61" }}
+            />
+            {mood}
+          </span>
+        )}
         <button
           onClick={onToggleVoice}
           className={`ml-auto flex h-8 w-8 items-center justify-center rounded-full transition ${
@@ -89,18 +134,22 @@ export function DialogueBox({
         ref={scrollRef}
         className="no-scrollbar max-h-36 space-y-1.5 overflow-y-auto pb-1"
       >
-        {history.slice(-6).map((t, i) => (
-          <p
-            key={`${i}-${t.text.slice(0, 12)}`}
-            className={
-              t.speaker === "npc"
-                ? "text-[15px] font-medium leading-snug text-ink"
-                : "text-right text-sm font-semibold text-primary"
-            }
-          >
-            {t.text}
-          </p>
-        ))}
+        {history.slice(-6).map((t, i, arr) => {
+          const isLastNpc =
+            t.speaker === "npc" && t.text === lastNpcLine?.text && i === arr.length - 1;
+          return (
+            <p
+              key={`${i}-${t.text.slice(0, 12)}`}
+              className={
+                t.speaker === "npc"
+                  ? "text-[15px] font-medium leading-snug text-ink"
+                  : "text-right text-sm font-semibold text-primary"
+              }
+            >
+              {isLastNpc ? t.text.slice(0, typed) : t.text}
+            </p>
+          );
+        })}
         {thinking && (
           <p className="flex items-center gap-1.5 text-sm font-medium text-inksoft">
             <span className="animate-breathe inline-block h-1.5 w-1.5 rounded-full bg-primary" />
