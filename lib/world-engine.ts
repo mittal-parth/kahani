@@ -125,7 +125,7 @@ const walkabilitySchema = {
     obstacles: {
       type: Type.ARRAY,
       description:
-        "Up to 8 boxes over regions in the walkable lower half that the player must NOT walk through: water, people/animals, stalls, counters, furniture, vehicles, walls, fires. Ignore small clutter.",
+        "Up to 8 boxes over DISCRETE solid objects the player clearly cannot stand on: a water body, a parked vehicle, a market stall, a counter, a fire. Each box tight around one object. NEVER box open street, floor, path, or ground — most of the walkable area must remain open. Ignore small clutter and background buildings above the ground plane.",
       items: rectSchema,
     },
   },
@@ -157,10 +157,32 @@ async function analyzeWalkability(
       groundTop: number;
       obstacles: Rect[];
     };
-    return {
-      groundTop: Math.max(40, Math.min(80, Math.round(parsed.groundTop))),
-      obstacles: (parsed.obstacles ?? []).slice(0, 8).map(clampRect),
+    const groundTop = Math.max(40, Math.min(80, Math.round(parsed.groundTop)));
+    let obstacles = (parsed.obstacles ?? []).slice(0, 8).map(clampRect);
+
+    // Safety cap: the walk band must stay mostly open. An over-eager vision
+    // pass that boxes the whole street would freeze the player in place —
+    // drop the largest boxes until coverage is sane.
+    const coverage = (boxes: Rect[]): number => {
+      let blocked = 0;
+      let total = 0;
+      for (let x = 2; x <= 98; x += 4) {
+        for (let y = groundTop; y <= 92; y += 4) {
+          total++;
+          if (boxes.some((o) => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h)) {
+            blocked++;
+          }
+        }
+      }
+      return total ? blocked / total : 0;
     };
+    while (obstacles.length > 0 && coverage(obstacles) > 0.5) {
+      obstacles = [...obstacles]
+        .sort((a, b) => b.w * b.h - a.w * a.h)
+        .slice(1);
+    }
+
+    return { groundTop, obstacles };
   } catch (err) {
     console.error("[analyzeWalkability] falling back to open ground:", err);
     return { groundTop: 58, obstacles: [] };

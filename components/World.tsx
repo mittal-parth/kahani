@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search, Volume2, VolumeX } from "lucide-react";
+import { DoorOpen, Search, Volume2, VolumeX, Zap } from "lucide-react";
 import type { Premise } from "@/lib/types";
 import type {
   DialogueResponse,
@@ -82,6 +82,15 @@ export function World() {
     image: string;
   } | null>(null);
   const [finaleLoading, setFinaleLoading] = useState(false);
+
+  // The engine made visible: model calls powering this run (text + image +
+  // vision + voice), and how many rooms have pre-built while the player walks.
+  const [genCalls, setGenCalls] = useState(0);
+  const [interiorsReady, setInteriorsReady] = useState(0);
+  const addCalls = useCallback(
+    (n: number) => setGenCalls((c) => c + n),
+    []
+  );
   const [sprite, setSprite] = useState<HTMLCanvasElement | null>(null);
   const [bootStatus, setBootStatus] = useState("Dreaming up the world…");
   const [entering, setEntering] = useState<string | null>(null);
@@ -112,6 +121,7 @@ export function World() {
       const { audio } = await post<{ audio: string | null }>("/api/voice", {
         text,
       });
+      addCalls(1);
       if (!audio || !voiceOnRef.current) return;
       audioRef.current?.pause();
       const el = new Audio(audio);
@@ -123,7 +133,7 @@ export function World() {
     } catch {
       // voice is best-effort
     }
-  }, []);
+  }, [addCalls]);
 
   const stopVoice = useCallback(() => {
     audioRef.current?.pause();
@@ -154,12 +164,14 @@ export function World() {
         questHook: hook,
       }).then(({ scene: s }) => {
         scenesRef.current.set(s.id, s);
+        addCalls(3); // interior = level-design text + image + walkability vision
+        setInteriorsReady((r) => r + 1);
         return s;
       });
       p.catch(() => interiorPromises.current.delete(h.id));
       interiorPromises.current.set(h.id, p);
     },
-    []
+    [addCalls]
   );
 
   /* ---------------- boot ---------------- */
@@ -179,6 +191,8 @@ export function World() {
       setCluesFound([false, false, false]);
       setFinale(null);
       setFinaleLoading(false);
+      setGenCalls(0);
+      setInteriorsReady(0);
 
       try {
         // 1) Expand the player's idea into a universe + hidden story arc.
@@ -205,6 +219,7 @@ export function World() {
         };
         setPremise(chosen);
         setStory(spec.story);
+        addCalls(1); // universe spec
 
         // 2) Paint the opening street.
         setBootStatus("Painting your opening scene…");
@@ -212,6 +227,7 @@ export function World() {
           scene: SceneData;
           questHook: string;
         }>("/api/scene", { premise: chosen, story: spec.story });
+        addCalls(3); // street = level design + image + walkability vision
         setQuestHook(hook || spec.story.goal);
         showScene(street);
         setPhase("playing");
@@ -223,7 +239,10 @@ export function World() {
           premise: chosen,
           referenceFrame: stripDataUrl(street.image),
         })
-          .then(({ sprite: s }) => chromaKeySprite(s))
+          .then(({ sprite: s }) => {
+            addCalls(1); // character render
+            return chromaKeySprite(s);
+          })
           .then(setSprite)
           .catch(() => {});
 
@@ -238,7 +257,7 @@ export function World() {
         setPhase("select");
       }
     },
-    [prefetchInterior, showScene]
+    [prefetchInterior, showScene, addCalls]
   );
 
   /* ---------------- interaction ---------------- */
@@ -309,6 +328,7 @@ export function World() {
           clueFound: hasClue ? cluesFound[clueIndex] : false,
           exchanges: history.filter((t) => t.speaker === "player").length,
         });
+        addCalls(1); // dialogue turn
         if (reply.questUpdate?.trim()) setQuestHook(reply.questUpdate.trim());
         if (reply.clueRevealed && hasClue && !cluesFound[clueIndex]) {
           setCluesFound((prev) => {
@@ -339,7 +359,7 @@ export function World() {
         });
       }
     },
-    [premise, scene, dialogue, questHook, story, cluesFound, speak]
+    [premise, scene, dialogue, questHook, story, cluesFound, speak, addCalls]
   );
 
   const allCluesFound = story ? cluesFound.every(Boolean) : false;
@@ -353,6 +373,7 @@ export function World() {
       const { finale: f } = await post<{
         finale: { title: string; resolution: string; image: string };
       }>("/api/finale", { premise, story });
+      addCalls(2); // finale script + closing frame
       setFinale(f);
       speak(f.resolution);
     } catch {
@@ -361,7 +382,7 @@ export function World() {
     } finally {
       setFinaleLoading(false);
     }
-  }, [premise, story, finaleLoading, speak, stopVoice]);
+  }, [premise, story, finaleLoading, speak, stopVoice, addCalls]);
 
   const closeDialogue = useCallback(() => {
     stopVoice();
@@ -378,6 +399,8 @@ export function World() {
     setCluesFound([false, false, false]);
     setFinale(null);
     setFinaleLoading(false);
+    setGenCalls(0);
+    setInteriorsReady(0);
   }, [stopVoice]);
 
   // Global Esc: close dialogue handled in DialogueBox; nothing else here.
@@ -501,6 +524,32 @@ export function World() {
       {!dialogue && (
         <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/55 px-4 py-2 text-xs font-semibold text-white/90 backdrop-blur-sm">
           WASD / arrows — move · E — enter / talk
+        </div>
+      )}
+
+      {/* --- The engine, made visible (the NB2 Lite pipeline is the product) --- */}
+      {!dialogue && !finale && (
+        <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex flex-col items-end gap-1.5">
+          <div
+            className="panel flex items-center gap-1.5 rounded-full px-3 py-1.5"
+            title="Every frame, character, room, line, and voice in this world is generated live"
+          >
+            <Zap size={11} strokeWidth={2.5} className="text-primary" />
+            <span className="text-[11px] font-bold tabular-nums text-ink">
+              {genCalls} AI generations this run
+            </span>
+          </div>
+          <div
+            className="panel flex items-center gap-1.5 rounded-full px-3 py-1.5"
+            title="Interiors generate in parallel while you walk — doors open instantly"
+          >
+            <DoorOpen size={11} strokeWidth={2.5} className="text-primary" />
+            <span className="text-[11px] font-bold tabular-nums text-ink">
+              {interiorsReady >= 3
+                ? "all rooms pre-built · doors open instantly"
+                : `rooms pre-building ${interiorsReady}/3`}
+            </span>
+          </div>
         </div>
       )}
 

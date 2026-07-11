@@ -35,21 +35,44 @@ export function GameCanvas({
   const nearRef = useRef<Hotspot | null>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // Escape hatch: frames spent pushing into walls with no progress. Past a
+  // threshold, collision relaxes so the player can never be trapped.
+  const stuckFramesRef = useRef(0);
+  const debugRef = useRef(false);
+  useEffect(() => {
+    debugRef.current = new URLSearchParams(window.location.search).has("debug");
+  }, []);
 
-  // (Re)load the backdrop when the scene changes; reset spawn position.
+  // (Re)load the backdrop when the scene changes; reset to a SAFE spawn —
+  // never inside an obstacle box (e.g. don't spawn standing in the canal).
   useEffect(() => {
     const img = new Image();
     img.src = scene.image;
     img.onload = () => {
       imgRef.current = img;
     };
-    playerRef.current = {
-      x: scene.kind === "interior" ? 50 : 12,
-      depth: 0.6,
-      dir: 1,
-      moving: false,
-    };
-  }, [scene.id, scene.image, scene.kind]);
+
+    const startX = scene.kind === "interior" ? 50 : 12;
+    const depth = 0.6;
+    const top = Math.max(45, Math.min(80, scene.groundTop ?? DEFAULT_BAND_TOP));
+    const py = top + (BAND_BOTTOM - top) * depth;
+    const blockedAt = (x: number) =>
+      (scene.obstacles ?? []).some(
+        (o) => x >= o.x && x <= o.x + o.w && py >= o.y && py <= o.y + o.h
+      );
+    let x = startX;
+    if (blockedAt(x)) {
+      outer: for (let dx = 4; dx <= 92; dx += 4) {
+        for (const cand of [startX + dx, startX - dx]) {
+          if (cand >= 2 && cand <= 98 && !blockedAt(cand)) {
+            x = cand;
+            break outer;
+          }
+        }
+      }
+    }
+    playerRef.current = { x, depth, dir: 1, moving: false };
+  }, [scene.id, scene.image, scene.kind, scene.groundTop, scene.obstacles]);
 
   // Ground horizon from the vision pass over the actual frame.
   const bandTop = Math.max(
@@ -119,9 +142,11 @@ export function GameCanvas({
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
+    let lastTick = performance.now();
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
+      lastTick = now;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
@@ -160,16 +185,26 @@ export function GameCanvas({
         const nx = Math.max(2, Math.min(98, p.x + vx * SPEED_X * dt));
         const nd = Math.max(0, Math.min(1, p.depth + vd * SPEED_DEPTH * dt));
 
-        if (!isBlocked(nx, footY(nd))) {
+        // After ~0.5s of pushing with zero progress, collision relaxes —
+        // a briefly-wrong obstacle box must never trap the player.
+        const relaxed = stuckFramesRef.current > 30;
+
+        if (relaxed || !isBlocked(nx, footY(nd))) {
           p.x = nx;
           p.depth = nd;
+          stuckFramesRef.current = 0;
         } else if (!isBlocked(nx, footY(p.depth))) {
           p.x = nx; // slide horizontally along the obstacle
+          stuckFramesRef.current = 0;
         } else if (!isBlocked(p.x, footY(nd))) {
           p.depth = nd; // slide in depth along the obstacle
+          stuckFramesRef.current = 0;
+        } else if (p.moving) {
+          stuckFramesRef.current++;
         }
       } else {
         p.moving = false;
+        stuckFramesRef.current = 0;
       }
 
       // --- Near hotspot? ---
@@ -190,24 +225,63 @@ export function GameCanvas({
       nearRef.current = near;
 
       // --- Draw backdrop (cover fit) ---
+      // All game coordinates are percentages OF THE IMAGE, so everything —
+      // hotspots, obstacles, the player — is mapped through the image's drawn
+      // rect. The person and the background always share one aspect/space,
+      // whatever the window shape.
       ctx.clearRect(0, 0, cw, ch);
       const img = imgRef.current;
+      let ox = 0;
+      let oy = 0;
+      let dw = cw;
+      let dh = ch;
       if (img && img.naturalWidth > 0) {
         const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-        const dw = img.naturalWidth * s;
-        const dh = img.naturalHeight * s;
-        ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+        dw = img.naturalWidth * s;
+        dh = img.naturalHeight * s;
+        ox = (cw - dw) / 2;
+        oy = (ch - dh) / 2;
+        ctx.drawImage(img, ox, oy, dw, dh);
       } else {
         ctx.fillStyle = "#1a1410";
         ctx.fillRect(0, 0, cw, ch);
       }
+      const X = (pxPct: number) => ox + (pxPct / 100) * dw;
+      const Y = (pyPct: number) => oy + (pyPct / 100) * dh;
+
+      // --- Debug overlay (?debug=1): obstacle boxes + walk band ---
+      if (debugRef.current) {
+        for (const o of scene.obstacles ?? []) {
+          ctx.fillStyle = "rgba(255,0,0,0.22)";
+          ctx.fillRect(X(o.x), Y(o.y), (o.w / 100) * dw, (o.h / 100) * dh);
+          ctx.strokeStyle = "rgba(255,0,0,0.7)";
+          ctx.strokeRect(X(o.x), Y(o.y), (o.w / 100) * dw, (o.h / 100) * dh);
+        }
+        const gy = Y(bandTop);
+        ctx.strokeStyle = "rgba(0,255,120,0.8)";
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(cw, gy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillRect(8, ch - 30, 240, 22);
+        ctx.fillStyle = "#7CFC9E";
+        ctx.font = "12px monospace";
+        ctx.fillText(
+          `x=${p.x.toFixed(1)} depth=${p.depth.toFixed(2)} stuck=${stuckFramesRef.current}`,
+          14,
+          ch - 14
+        );
+      }
 
       // --- Hotspot affordances ---
       for (const h of scene.hotspots) {
-        const hx = (h.rect.x / 100) * cw;
-        const hy = (h.rect.y / 100) * ch;
-        const hw = (h.rect.w / 100) * cw;
-        const hh = (h.rect.h / 100) * ch;
+        const hx = X(h.rect.x);
+        const hy = Y(h.rect.y);
+        const hw = (h.rect.w / 100) * dw;
+        const hh = (h.rect.h / 100) * dh;
         const isNear = near?.id === h.id;
 
         // Marker dot above the zone
@@ -230,11 +304,11 @@ export function GameCanvas({
         }
       }
 
-      // --- Player sprite ---
-      const footX = (px / 100) * cw;
-      const footY = (py / 100) * ch;
+      // --- Player sprite (sized against the IMAGE, not the window) ---
+      const footX = X(px);
+      const footY = Y(py);
       const scale = 0.62 + 0.48 * p.depth;
-      const spriteH = ch * 0.34 * scale;
+      const spriteH = dh * 0.3 * scale;
 
       // soft ground shadow
       ctx.beginPath();
@@ -288,7 +362,34 @@ export function GameCanvas({
     };
 
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    // rAF stops in hidden/occluded tabs; keep the simulation ticking (slowly)
+    // via a timer so the game never appears frozen after a tab switch.
+    const fallback = setInterval(() => {
+      if (performance.now() - lastTick > 250) {
+        cancelAnimationFrame(raf);
+        tick(performance.now());
+      }
+    }, 120);
+
+    // Test/debug hooks (?debug=1): drive keys + read state programmatically.
+    if (debugRef.current) {
+      (window as unknown as Record<string, unknown>).__kahani = {
+        setKey: (k: string, v: boolean) => {
+          keysRef.current[k] = v;
+        },
+        state: () => ({
+          ...playerRef.current,
+          near: nearRef.current?.name ?? null,
+        }),
+      };
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(fallback);
+      delete (window as unknown as Record<string, unknown>).__kahani;
+    };
   }, [scene, sprite, playerFoot, isBlocked, bandTop]);
 
   return <canvas ref={canvasRef} className="block h-full w-full" />;

@@ -1,60 +1,94 @@
-# Kahani — an AI story you play
+# Kahani World — describe a scene, walk into it
 
-A cinematic, choice-driven interactive story set in India where **every scene is
-generated in real time**. Pick a world, make a choice, and a fresh 1K image + the
-next beat of narrative are generated on the fly. No two playthroughs are alike.
+**An AI game studio that runs while you play.** Type one sentence — *"a
+rain-flooded night market in Mumbai, I'm a courier carrying a tiffin box
+someone will kill for"* — and thirty seconds later you're **walking through
+that world with arrow keys**: an isometric street painted by Nano Banana 2
+Lite, a player character forged in the same art style, buildings you can
+enter, characters who speak to you out loud, and one hidden mystery that
+converges to a finale.
 
-Built for the **Nano Banana 2 Lite** hackathon — real-time, high-volume image
-generation is load-bearing to the experience, not a bolt-on prompt box.
+Built solo at the **Google DeepMind Bangalore Hackathon** for **Problem
+Statement 3: High-Throughput Creative Workflows with NB2 Lite**.
 
-## The per-turn pipeline
+## Why this needs NB2 Lite (generation is load-bearing)
 
-Each choice fires a two-stage generative pipeline server-side:
+This is not a prompt-box-to-image app. The game **cannot exist** without
+fast, cheap, high-volume generation:
 
-1. **Story** — a Gemini text model takes the story-so-far + the player's choice and
-   returns structured JSON: `narrative`, 4 `choices`, an `imagePrompt`, and an
-   `isEnding` flag (`lib/gemini.ts` → `generateBeat`).
-2. **Image** — NB2 Lite turns that `imagePrompt` (+ a per-world style bible + the
-   **previous frame as a visual reference** for character/style continuity) into the
-   scene image (`generateImage`).
+- Every visible thing is generated at play-time: the street, the player
+  sprite, every interior, the finale frame. Nothing is pre-made.
+- **Spatial prefetch:** the moment the street appears, all 3 interiors
+  generate **in parallel while you walk** — so pressing E at a door is
+  instant. The HUD shows it live: *"rooms pre-building 2/3"* → *"all rooms
+  pre-built · doors open instantly."*
+- A single 5-minute run fires **~20+ model calls** (level-design text,
+  image renders, vision passes, dialogue turns, TTS lines) — visible in the
+  in-game "AI generations this run" ticker. At $0.034 / 1k images, a full
+  playthrough costs well under a rupee.
 
-Orchestrated in `app/api/turn/route.ts`; the API key never leaves the server.
+## The pipeline per scene
 
-## Setup
+```
+player idea ──► Gemini: universe spec + hidden story arc (goal, secret, 3 clues)
+                  │
+                  ▼
+       Gemini: level design (buildings, doorway boxes, quest hook)
+                  │
+                  ▼
+       NB2 Lite: isometric street frame (<4s)
+                  │
+                  ├──► Gemini vision pass over the ACTUAL frame:
+                  │      ground horizon + obstacle boxes (water, crowds, stalls)
+                  │      → real collision, no walking on water
+                  ├──► NB2 Lite: player sprite, using the street frame as a
+                  │      style reference → chroma-keyed onto the canvas
+                  └──► 3 interiors pre-generate in parallel (each: level
+                         design + NB2 frame + vision pass + an NPC persona)
+```
+
+**Dialogue:** each NPC guards one clue of the world's single mystery.
+Conversations are bounded — the clue must surface by the second exchange and
+the chat closes by the third. NPC lines are voiced with **Gemini TTS**.
+Collect all 3 clues → **"Unravel the truth"** → a generated finale frame +
+the secret, spoken aloud.
+
+## Google AI stack used
+
+| Model | Role |
+| --- | --- |
+| `gemini-3.1-flash-lite-image` (NB2 Lite) | streets, interiors, sprite, finale — all live |
+| `gemini-3.5-flash` | universe + story arc, level design, walkability vision, NPC dialogue |
+| `gemini-3.1-flash-tts-preview` (Gemini Audio) | every NPC line + the finale, spoken |
+
+## Run it
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in the values
+cp .env.example .env.local   # add GEMINI_API_KEY + model ids
 npm run dev                  # http://localhost:3000
 ```
 
-In `.env.local`:
+Controls: **WASD / arrows** move · **E** enter / talk · **1–3** replies ·
+type anything to any character · **Esc** leave.
 
-```
-GEMINI_API_KEY=...           # from https://aistudio.google.com/apikey
-TEXT_MODEL=gemini-2.5-flash
-IMAGE_MODEL=gemini-2.5-flash-image   # ← swap for the NB2 Lite model ID
-```
+## Impact in India
 
-`IMAGE_MODEL` defaults to a public image model so the app runs before you have
-NB2 Lite access. Point it at the hackathon's NB2 Lite ID when ready — no code
-changes needed.
+Kahani ("story") turns any Indian setting — a Chandni Chowk gali, Kerala
+backwaters, a Himalayan pilgrimage — into a playable, voiced world in
+seconds, with zero art budget. That unlocks: regional storytelling and
+folklore preservation in any of India's languages (swap the TTS voice),
+game-based learning where a classroom describes a historical scene and walks
+through it, and a path for India's indie game developers — the cost of world
+art drops from lakhs to paise.
 
 ## Project map
 
-| Path                       | Role                                              |
-| -------------------------- | ------------------------------------------------- |
-| `lib/premises.ts`          | The four India-set starting worlds + style bibles |
-| `lib/gemini.ts`            | Text (structured) + image generation              |
-| `app/api/turn/route.ts`    | Per-turn orchestration                            |
-| `components/Game.tsx`      | Client state machine (landing → playing → ending) |
-| `components/SceneView.tsx` | The cinematic gameplay screen                     |
-| `components/Ending.tsx`    | Journey recap filmstrip                           |
-
-## Ideas to push further
-
-- **Prefetch all 4 branches** while the player reads — generate the next image for
-  every choice in parallel so the next scene is instant. This is the strongest
-  showcase of NB2 Lite's speed + cost (4× the generation, still cheap/fast).
-- Per-world aspect ratios and a shareable "story card" of the finished journey.
-- Runtime genre picker / custom premise input.
+| Path | Role |
+| --- | --- |
+| `lib/world-engine.ts` | universe/story/scene/sprite/dialogue/voice/finale generation |
+| `app/api/*` | `universe` · `scene` · `sprite` · `dialogue` · `voice` · `finale` |
+| `components/World.tsx` | orchestrator: scene cache, parallel prefetch, clues, finale |
+| `components/GameCanvas.tsx` | canvas loop: movement, collision, hotspots, sprite |
+| `components/DialogueBox.tsx` | voiced NPC conversations |
+| `docs/` | PRD, design brief, game design |
