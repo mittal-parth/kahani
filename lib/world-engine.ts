@@ -128,15 +128,21 @@ const walkabilitySchema = {
         "Up to 8 boxes over DISCRETE solid objects the player clearly cannot stand on: a water body, a parked vehicle, a market stall, a counter, a fire. Each box tight around one object. NEVER box open street, floor, path, or ground — most of the walkable area must remain open. Ignore small clutter and background buildings above the ground plane.",
       items: rectSchema,
     },
+    depthGrid: {
+      type: Type.ARRAY,
+      items: { type: Type.INTEGER },
+      description:
+        "Exactly 160 integers: a 16-wide × 10-tall row-major grid over the image (top-left first). Each is the scene depth at that cell: 0 = nearest to the camera, 100 = farthest (sky/horizon). Estimate from perspective cues.",
+    },
   },
-  required: ["groundTop", "obstacles"],
+  required: ["groundTop", "obstacles", "depthGrid"],
 };
 
 async function analyzeWalkability(
   b64: string,
   mimeType: string,
   keepClearNote: string
-): Promise<{ groundTop: number; obstacles: Rect[] }> {
+): Promise<{ groundTop: number; obstacles: Rect[]; depthGrid?: number[] }> {
   try {
     const res = await ai().models.generateContent({
       model: TEXT_MODEL,
@@ -156,8 +162,14 @@ async function analyzeWalkability(
     const parsed = JSON.parse(res.text) as {
       groundTop: number;
       obstacles: Rect[];
+      depthGrid?: number[];
     };
     const groundTop = Math.max(40, Math.min(80, Math.round(parsed.groundTop)));
+    const depthGrid = Array.isArray(parsed.depthGrid)
+      ? parsed.depthGrid
+          .slice(0, 160)
+          .map((v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0))))
+      : undefined;
     let obstacles = (parsed.obstacles ?? []).slice(0, 8).map(clampRect);
 
     // Safety cap: the walk band must stay mostly open. An over-eager vision
@@ -182,10 +194,10 @@ async function analyzeWalkability(
         .slice(1);
     }
 
-    return { groundTop, obstacles };
+    return { groundTop, obstacles, depthGrid };
   } catch (err) {
     console.error("[analyzeWalkability] falling back to open ground:", err);
-    return { groundTop: 58, obstacles: [] };
+    return { groundTop: 58, obstacles: [], depthGrid: undefined };
   }
 }
 
@@ -335,6 +347,7 @@ export async function generateStreetScene(
     hotspots,
     groundTop: walk.groundTop,
     obstacles: walk.obstacles,
+    depthGrid: walk.depthGrid,
     questHook: spec.questHook,
   };
 }
@@ -426,6 +439,7 @@ export async function generateInteriorScene(
     parentId: "street",
     groundTop: walk.groundTop,
     obstacles: walk.obstacles,
+    depthGrid: walk.depthGrid,
     clueIndex: building.clueIndex,
   };
 }

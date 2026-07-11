@@ -51,6 +51,8 @@ export type SceneData = {
   obstacles?: Rect[];
   /** For interiors: which story clue this scene's NPC guards. */
   clueIndex?: number;
+  /** Vision-derived coarse depth: 16×10 row-major grid, 0 = near … 100 = far. */
+  depthGrid?: number[];
 };
 
 export type DialogueTurn = {
