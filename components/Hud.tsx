@@ -203,7 +203,7 @@ function JourneyTrail({
           />
         ))}
         <motion.div
-          className="absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-primary shadow"
+          className="absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-primary"
           initial={false}
           animate={{ left: `${Math.min(pct, 94)}%` }}
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}

@@ -25,13 +25,9 @@ export function Landing({ onStart }: { onStart: (idea: string) => void }) {
         transition={{ duration: 0.5, ease: EASE_OUT }}
         className="md:sticky md:top-24"
       >
-        <div className="mb-6 inline-flex items-center gap-2 text-xs font-bold text-primary">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-70" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-          </span>
+        <p className="mb-6 border-b border-ink/15 pb-3 text-xs font-bold uppercase tracking-widest text-primary">
           Generated live · Nano Banana 2 Lite
-        </div>
+        </p>
 
         <h1 className="font-display text-6xl font-extrabold leading-[0.95] tracking-tight text-ink sm:text-7xl">
           Kahani

@@ -555,15 +555,19 @@ export function World() {
 
   if (phase === "booting" || !scene || !premise) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
-        <div className="shimmer relative mb-8 h-1.5 w-44 overflow-hidden rounded-full bg-ink/10" />
-        <h2 className="font-display text-3xl font-extrabold text-ink">
-          {premise?.title ?? "Building your world"}
-        </h2>
-        <p className="mt-3 text-sm font-semibold text-inksoft">{bootStatus}</p>
-        <p className="mt-1 text-xs font-medium text-inksoft/70">
-          world · scene · character · interiors — all generated live
-        </p>
+      <div className="flex min-h-dvh flex-col items-center justify-center px-6">
+        <div className="w-full max-w-sm">
+          <h2 className="font-display text-3xl font-extrabold text-ink">
+            {premise?.title ?? "Building your world"}
+          </h2>
+          <div className="mt-5 border-t border-ink/15 pt-4">
+            <p className="text-sm font-semibold text-ink">{bootStatus}</p>
+            <p className="mt-2 text-xs font-medium leading-relaxed text-inksoft">
+              universe · story · scene · character · interiors · voices — all
+              generated live{genCalls > 0 ? ` (${genCalls} calls so far)` : ""}
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -670,27 +674,19 @@ export function World() {
 
       {/* --- The engine, made visible (the NB2 Lite pipeline is the product) --- */}
       {!dialogue && !finale && (
-        <div className="pointer-events-none absolute bottom-4 right-4 z-10 flex flex-col items-end gap-1.5">
-          <div
-            className="panel flex items-center gap-1.5 rounded-full px-3 py-1.5"
-            title="Every frame, character, room, line, and voice in this world is generated live"
-          >
-            <Zap size={11} strokeWidth={2.5} className="text-primary" />
-            <span className="text-[11px] font-bold tabular-nums text-ink">
-              {genCalls} AI generations this run
-            </span>
-          </div>
-          <div
-            className="panel flex items-center gap-1.5 rounded-full px-3 py-1.5"
-            title="Interiors generate in parallel while you walk — doors open instantly"
-          >
-            <DoorOpen size={11} strokeWidth={2.5} className="text-primary" />
-            <span className="text-[11px] font-bold tabular-nums text-ink">
-              {interiorsReady >= 3
-                ? "all rooms pre-built · doors open instantly"
-                : `rooms pre-building ${interiorsReady}/3`}
-            </span>
-          </div>
+        <div
+          className="panel pointer-events-none absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded-lg px-3 py-2"
+          title="Every frame, character, room, line, and voice is generated live; interiors pre-build in parallel while you walk"
+        >
+          <Zap size={11} strokeWidth={2.5} className="text-primary" />
+          <span className="text-[11px] font-semibold tabular-nums text-ink">
+            {genCalls} generations
+          </span>
+          <span className="h-3 w-px bg-ink/15" />
+          <DoorOpen size={11} strokeWidth={2.5} className="text-primary" />
+          <span className="text-[11px] font-semibold tabular-nums text-ink">
+            {interiorsReady >= 3 ? "rooms ready · instant" : `rooms ${interiorsReady}/3`}
+          </span>
         </div>
       )}
 

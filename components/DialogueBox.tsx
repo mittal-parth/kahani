@@ -185,10 +185,10 @@ export function DialogueBox({
               <button
                 key={opt}
                 onClick={() => onSay(opt)}
-                className="flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-3.5 py-2 text-sm font-semibold text-ink shadow-soft transition hover:border-primary/40 active:scale-95"
+                className="flex items-center gap-2 rounded-lg border border-ink/15 bg-surface px-3 py-2 text-sm font-semibold text-ink transition hover:border-primary hover:text-primary active:translate-y-px"
               >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
-                  {i + 1}
+                <span className="text-[11px] font-bold tabular-nums text-primary">
+                  {i + 1}.
                 </span>
                 {opt}
               </button>

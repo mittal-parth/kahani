@@ -1,3 +1,7 @@
+/* Hallmark · genre: editorial(warm) · scope: game-chrome refinement · theme: custom (terracotta on warm cream)
+ * macrostructure: n/a (app chrome over full-bleed 3D scene) · pre-emit critique: P4 H4 E4 S4 R5 V4
+ * preserved: Bricolage Grotesque + Plus Jakarta pairing, terracotta/cream palette, game IA
+ * removed: ping-dot badge, shimmer skeleton, duplicate engine pills, per-chip shadows */
 @import "tailwindcss";
 
 :root {
@@ -47,6 +51,13 @@ body {
 
 .font-display {
   font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+
+/* Focus is never invisible and never animated in. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  transition: none;
 }
 
 /* ---- Surfaces (no glassmorphism — solid warm surfaces + soft shadow) ---- */
