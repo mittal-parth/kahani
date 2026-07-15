@@ -118,7 +118,7 @@ art drops from lakhs to paise.
 | `proxy.ts` | session refresh; redirect unauthenticated users to `/login` |
 | `app/login` · `app/auth/callback` | Google / magic-link sign-in |
 | `app/api/games/*` · `app/api/profile` | saved worlds REST API + creation quota |
-| `app/play/[gameId]` · `app/play/new` | load or create a world |
+| `app/play/[gameId]` | load a saved world (create starts on Home) |
 | `components/Home.tsx` | gallery-forward landing + create entry |
 | `components/World.tsx` | orchestrator: scene cache, parallel prefetch, clues, finale, persistence |
 | `components/GameCanvas.tsx` | canvas loop: movement, collision, hotspots, sprite |

@@ -3,7 +3,7 @@
 /**
  * Explorable world orchestrator: generation, persistence, load/resume, and play.
  *
- * - **Create mode** (`/play/new`): bible → game row → boot → incremental saves.
+ * - **Create mode** (from Home): bible → game row → boot → incremental saves.
  * - **Load mode** (`/play/[id]`): hydrate from Storage; owners may still generate.
  * - **Visitors**: finite world — edges without saved neighbors act as walls.
  */
@@ -45,8 +45,15 @@ import {
   preloadSceneImages,
   warmSceneImages,
 } from "@/lib/image-cache";
-import { GameCanvas, type ExitDirection } from "./GameCanvas";
+import { GameCanvas, type ExitDirection, type PlayerState } from "./GameCanvas";
 import { DialogueBox } from "./DialogueBox";
+import {
+  Minimap,
+  mergeKnownCell,
+  streetCellFromScene,
+  streetsFromScenes,
+  type MinimapCell,
+} from "./Minimap";
 
 export type { WorldProps };
 
@@ -189,10 +196,24 @@ function rebuildPlacedRooms(scenes: Iterable<SceneData>): Set<number> {
 }
 
 /**
+ * Reserve the next unplaced bible room before a screen POST begins.
+ * Parallel neighbor generation used to read the same unplaced list and duplicate rooms.
+ */
+function claimNextRoom(placed: Set<number>): number | null {
+  for (const i of [0, 1, 2] as const) {
+    if (!placed.has(i)) {
+      placed.add(i);
+      return i;
+    }
+  }
+  return null;
+}
+
+/**
  * Main explorable world component.
  * @param props.mode - `"create"` starts fresh; `"load"` hydrates a saved game.
  * @param props.gameId - Required for load mode (`/play/[gameId]`).
- * @param props.initialIdea - Required for create mode (from `/play/new` via sessionStorage).
+ * @param props.initialIdea - Required for create mode (passed from Home).
  */
 export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
   const router = useRouter();
@@ -240,6 +261,9 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
   const [voiceOn, setVoiceOn] = useState(true);
   const [speaking, setSpeaking] = useState(false);
   const [dialogue, setDialogue] = useState<WorldDialogueState | null>(null);
+  const [playerPos, setPlayerPos] = useState<{ x: number; y: number } | null>(null);
+  const [knownStreets, setKnownStreets] = useState<MinimapCell[]>([]);
+  const [walkedStreets, setWalkedStreets] = useState<string[]>([]);
 
   const scenesRef = useRef<Map<string, SceneData>>(new Map());
   const interiorPromises = useRef<Map<string, Promise<SceneData>>>(new Map());
@@ -321,6 +345,13 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
     setAmbient(s.ambient);
     setTimeout(() => setAmbient((a) => (a === s.ambient ? null : a)), 5000);
     warmSceneImages(s);
+
+    const cell = streetCellFromScene(s);
+    if (cell) {
+      setKnownStreets((prev) => mergeKnownCell(prev, cell));
+      const key = `${cell.x},${cell.y}`;
+      setWalkedStreets((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    }
   }, []);
 
   /** Hold the current scene until backdrop images are decoded; optional overlay for cache hits. */
@@ -414,7 +445,10 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
       const pending = screenPromises.current.get(id);
       if (pending) return pending;
 
-      const unplacedRooms = [0, 1, 2].filter((i) => !placedRoomsRef.current.has(i));
+      // Claim before POST so concurrent screen gens each get a distinct room (or none).
+      const claimedRoom = claimNextRoom(placedRoomsRef.current);
+      const unplacedRooms = claimedRoom !== null ? [claimedRoom] : [];
+
       const p = post<{ scene: SceneData }>("/api/screen", {
         bible: theBible,
         x,
@@ -428,15 +462,30 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
         setScreensDreamed((n) => n + 1);
         saveScene(s);
         warmSceneImages(s);
+        const cell = streetCellFromScene(s);
+        if (cell) {
+          setKnownStreets((prev) => mergeKnownCell(prev, cell));
+        }
+        let roomPlacedOnScreen = false;
         for (const h of s.hotspots) {
           if (h.kind === "building" && typeof h.clueIndex === "number") {
             placedRoomsRef.current.add(h.clueIndex);
+            roomPlacedOnScreen = true;
             prefetchInterior(theBible, h, s.id);
           }
         }
+        // Vision missed the reserved room — release so a later screen can place it.
+        if (claimedRoom !== null && !roomPlacedOnScreen) {
+          placedRoomsRef.current.delete(claimedRoom);
+        }
         return s;
       });
-      p.catch(() => screenPromises.current.delete(id));
+      p.catch(() => {
+        screenPromises.current.delete(id);
+        if (claimedRoom !== null) {
+          placedRoomsRef.current.delete(claimedRoom);
+        }
+      });
       screenPromises.current.set(id, p);
       return p;
     },
@@ -471,6 +520,9 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
     setSpawn(null);
     setShowVision(false);
     setScreensDreamed(0);
+    setPlayerPos(null);
+    setKnownStreets([]);
+    setWalkedStreets([]);
   }, []);
 
   /** Populate refs and state from `GET /api/games/[id]`. */
@@ -495,6 +547,8 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
     setScreensDreamed(streetCount);
     setInteriorsReady(interiorCount);
     setGenCalls(game.genCalls);
+    setKnownStreets(streetsFromScenes(game.scenes));
+    setWalkedStreets([]);
 
     if (game.finales.victory) {
       finalePromise.current = Promise.resolve(game.finales.victory);
@@ -961,6 +1015,10 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
     router.push("/");
   }, [stopVoice, router]);
 
+  const onPlayerPosition = useCallback((p: PlayerState) => {
+    setPlayerPos({ x: p.x, y: p.y });
+  }, []);
+
   useEffect(() => stopVoice, [stopVoice]);
 
   if (phase === "booting" || !scene || !premise) {
@@ -985,6 +1043,13 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
     );
   }
 
+  const minimapCoord =
+    scene.kind === "street" && scene.coord
+      ? scene.coord
+      : scene.kind === "interior" && scene.parentId
+        ? (scenesRef.current.get(scene.parentId)?.coord ?? null)
+        : null;
+
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-ink">
       <GameCanvas
@@ -1000,6 +1065,7 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
         onInteract={onInteract}
         spawn={spawn}
         onExitEdge={onExitEdge}
+        onPosition={onPlayerPosition}
         showVision={showVision}
       />
 
@@ -1080,7 +1146,8 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
             </div>
           )}
         </div>
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-none flex flex-col items-end gap-2">
+          <div className="pointer-events-auto flex items-center gap-2">
           {scene.annotated && (
             <button
               onClick={() => setShowVision((v) => !v)}
@@ -1111,6 +1178,16 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
           >
             Leave world
           </button>
+          </div>
+          {!dialogue && !finale && (
+            <Minimap
+              known={knownStreets}
+              walked={walkedStreets}
+              currentCoord={minimapCoord}
+              player={playerPos}
+              inside={scene.kind === "interior"}
+            />
+          )}
         </div>
       </div>
 

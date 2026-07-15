@@ -8,10 +8,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight, Trash2 } from "lucide-react";
-import {
-  CREATE_IDEA_STORAGE_KEY,
-  MAX_CREATE_IDEA_LENGTH,
-} from "@/lib/constants";
+import { World } from "@/components/World";
+import { MAX_CREATE_IDEA_LENGTH } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type {
   GameListItem,
@@ -38,6 +36,7 @@ export function Home() {
   const [quota, setQuota] = useState<GenerationQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [creatingIdea, setCreatingIdea] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -71,12 +70,11 @@ export function Home() {
   // Everyone else's worlds — replay loads from storage, no new generation.
   const gallery = userId ? games.filter((g) => g.owner !== userId) : games;
 
-  /** Navigate to create flow; idea travels via sessionStorage, not the URL. */
+  /** Start live generation inline; World redirects to `/play/[id]` once the row exists. */
   const startCreate = () => {
     const text = idea.trim();
     if (!text || !quota?.canCreate) return;
-    sessionStorage.setItem(CREATE_IDEA_STORAGE_KEY, text);
-    router.push("/play/new");
+    setCreatingIdea(text);
   };
 
   const signOut = async () => {
@@ -102,11 +100,16 @@ export function Home() {
     }
   };
 
-  const quotaMessage = !quota?.canCreate
-    ? quota?.limit === 0
-      ? "Creating new worlds is currently disabled."
-      : "You've used your free world."
-    : null;
+  const quotaMessage =
+    quota && !quota.canCreate
+      ? quota.limit === 0
+        ? "Creating new worlds is currently disabled."
+        : "You've used your free world."
+      : null;
+
+  if (creatingIdea) {
+    return <World mode="create" initialIdea={creatingIdea} />;
+  }
 
   return (
     <div className="mx-auto min-h-dvh max-w-5xl px-6 py-14 md:py-24">
@@ -146,7 +149,11 @@ export function Home() {
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-inksoft">
           Create
         </p>
-        {quota?.canCreate ? (
+        {loading || quota === null ? (
+          <div className="rounded-2xl border border-ink/10 bg-ink/5 px-4 py-5">
+            <p className="text-sm font-semibold text-inksoft">Checking your quota…</p>
+          </div>
+        ) : quota.canCreate ? (
           <div className="card rounded-2xl p-2">
             <textarea
               value={idea}

@@ -152,7 +152,7 @@ export type WorldProps = {
   mode: WorldMode;
   /** Required when `mode` is `"load"`. */
   gameId?: string;
-  /** Required when `mode` is `"create"` (from `/play/new` via sessionStorage). */
+  /** Required when `mode` is `"create"` (passed from Home). */
   initialIdea?: string;
 };
 

@@ -11,9 +11,6 @@ export const MAX_TURNS = 8;
 /** Starting value of the time budget (drains toward 0 = out of time). */
 export const INITIAL_CLOCK = 100;
 
-/** sessionStorage key for the create flow idea (Home → `/play/new`). */
-export const CREATE_IDEA_STORAGE_KEY = "kahani:create-idea";
-
 /** Max characters for a create-flow idea (matches `/api/universe` and POST `/api/games`). */
 export const MAX_CREATE_IDEA_LENGTH = 1200;
 

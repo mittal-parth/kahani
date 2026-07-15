@@ -23,6 +23,7 @@ export function GameCanvas({
   onInteract,
   spawn,
   onExitEdge,
+  onPosition,
   showVision,
 }: {
   scene: SceneData;
@@ -34,6 +35,8 @@ export function GameCanvas({
   spawn?: { x: number; y: number } | null;
   /** Fired once when the player walks off an open edge of an overworld screen. */
   onExitEdge?: (dir: ExitDirection) => void;
+  /** Live player pose for HUD (minimap); throttled in the render loop. */
+  onPosition?: (p: PlayerState) => void;
   /** Show the engine's traced frame instead of the clean one. */
   showVision?: boolean;
 }) {
@@ -48,6 +51,8 @@ export function GameCanvas({
   const exitFiredRef = useRef(false);
   const onExitEdgeRef = useRef(onExitEdge);
   onExitEdgeRef.current = onExitEdge;
+  const onPositionRef = useRef(onPosition);
+  onPositionRef.current = onPosition;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   const debugRef = useRef(false);
@@ -89,6 +94,7 @@ export function GameCanvas({
     const startY = spawn?.y ?? 72;
     playerRef.current = { x: startX, y: startY, dir: 1, moving: false };
     exitFiredRef.current = false;
+    onPositionRef.current?.(playerRef.current);
 
     return () => {
       cancelled = true;
@@ -127,6 +133,8 @@ export function GameCanvas({
     let raf = 0;
     let last = performance.now();
     let lastTick = performance.now();
+    let lastPositionReport = 0;
+    let lastReported = { x: 0, y: 0, moving: false };
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
@@ -187,6 +195,19 @@ export function GameCanvas({
         }
       } else {
         p.moving = false;
+      }
+
+      const reportPosition = onPositionRef.current;
+      if (reportPosition) {
+        const moved =
+          p.x !== lastReported.x ||
+          p.y !== lastReported.y ||
+          p.moving !== lastReported.moving;
+        if (moved && now - lastPositionReport >= 100) {
+          lastPositionReport = now;
+          lastReported = { x: p.x, y: p.y, moving: p.moving };
+          reportPosition(p);
+        }
       }
 
       // --- Near hotspot? ---
