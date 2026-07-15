@@ -23,6 +23,12 @@ Keep types in **one place per layer**. Do not define duplicate shapes inline in 
 - Import server types in routes and server libs with `@/lib/types/server`.
 - [`lib/types.ts`](lib/types.ts) re-exports client types for backward compatibility — prefer the explicit paths in new code.
 
+## Helpers
+
+- [`lib/constants.ts`](lib/constants.ts) is for **shared constants only** — no functions.
+- Do not add new `lib/*.ts` files for one-off utilities.
+- Inline logic at the call site when it runs in one place; colocate in an existing domain module (e.g. [`lib/games.ts`](lib/games.ts)) only when reused across multiple routes.
+
 ## Documentation
 
 - Add **JSDoc** (`/** … */`) on exported functions, types, components, and API route handlers.

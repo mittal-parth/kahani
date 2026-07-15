@@ -17,6 +17,9 @@ export const CREATE_IDEA_STORAGE_KEY = "kahani:create-idea";
 /** Max characters for a create-flow idea (matches `/api/universe` and POST `/api/games`). */
 export const MAX_CREATE_IDEA_LENGTH = 1200;
 
+/** Max characters for a saved/display game title (first line of user idea). */
+export const MAX_GAME_TITLE_LENGTH = 80;
+
 /** API-call budget per generated asset kind (server derivation + client live meter). */
 export const GEN_CALL_COST = {
   universe: 1,

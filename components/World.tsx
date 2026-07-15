@@ -39,7 +39,7 @@ import type {
   Hotspot,
   SceneData,
 } from "@/lib/universe";
-import { GEN_CALL_COST } from "@/lib/constants";
+import { GEN_CALL_COST, MAX_GAME_TITLE_LENGTH } from "@/lib/constants";
 import {
   getCachedImage,
   preloadSceneImages,
@@ -628,6 +628,14 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
 
       try {
         const { bible: theBible } = await post<{ bible: GameBible }>("/api/universe", { idea });
+        const firstLine =
+          idea.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
+        theBible.title =
+          firstLine.length === 0
+            ? "Untitled world"
+            : firstLine.length <= MAX_GAME_TITLE_LENGTH
+              ? firstLine
+              : `${firstLine.slice(0, MAX_GAME_TITLE_LENGTH - 1)}…`;
         const chosen: Premise = {
           id: "custom",
           title: theBible.title,
