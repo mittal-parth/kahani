@@ -56,8 +56,13 @@ export function GameCanvas({
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   const debugRef = useRef(false);
+  const mainColorRef = useRef("#ffbf00");
   useEffect(() => {
     debugRef.current = new URLSearchParams(window.location.search).has("debug");
+    const main = getComputedStyle(document.documentElement)
+      .getPropertyValue("--main")
+      .trim();
+    if (main) mainColorRef.current = main;
   }, []);
 
   // (Re)load the backdrop when the scene changes; spawn on walkable ground.
@@ -317,7 +322,7 @@ export function GameCanvas({
       } else {
         ctx.beginPath();
         ctx.arc(footX, footY - spriteH * 0.5, spriteH * 0.2, 0, Math.PI * 2);
-        ctx.fillStyle = "#c8552e";
+        ctx.fillStyle = mainColorRef.current;
         ctx.fill();
       }
 

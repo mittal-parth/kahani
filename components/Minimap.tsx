@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 export type MinimapCell = {
   x: number;
   y: number;
@@ -109,8 +111,8 @@ export function Minimap({
   }
 
   return (
-    <div
-      className="panel pointer-events-none rounded-xl p-0"
+    <Card
+      className="pointer-events-none p-0"
       style={{ width: PANEL, height: PANEL }}
       aria-label="World map"
     >
@@ -138,17 +140,17 @@ export function Minimap({
                 rx={2}
                 fill={
                   isCurrent
-                    ? "rgba(200, 85, 46, 0.35)"
+                    ? "color-mix(in oklch, var(--main) 35%, transparent)"
                     : isWalked
-                      ? "rgba(42, 32, 26, 0.18)"
-                      : "rgba(42, 32, 26, 0.08)"
+                      ? "color-mix(in oklch, var(--foreground) 18%, transparent)"
+                      : "color-mix(in oklch, var(--foreground) 8%, transparent)"
                 }
                 stroke={
                   isCurrent
-                    ? "rgba(200, 85, 46, 0.7)"
+                    ? "color-mix(in oklch, var(--main) 70%, transparent)"
                     : isWalked
-                      ? "rgba(42, 32, 26, 0.25)"
-                      : "rgba(42, 32, 26, 0.12)"
+                      ? "color-mix(in oklch, var(--foreground) 25%, transparent)"
+                      : "color-mix(in oklch, var(--foreground) 12%, transparent)"
                 }
                 strokeWidth={isCurrent ? 1.5 : 1}
               />
@@ -157,7 +159,7 @@ export function Minimap({
                   cx={x + cellSize - gap - 3}
                   cy={y + gap + 3}
                   r={2}
-                  fill="rgba(200, 85, 46, 0.65)"
+                  fill="color-mix(in oklch, var(--main) 65%, transparent)"
                 />
               )}
             </g>
@@ -171,12 +173,12 @@ export function Minimap({
             width={playerRect.w}
             height={playerRect.h}
             rx={1}
-            fill={inside ? "transparent" : "var(--color-primary, #c8552e)"}
-            stroke="var(--color-primary, #c8552e)"
+            fill={inside ? "transparent" : "var(--main)"}
+            stroke="var(--main)"
             strokeWidth={inside ? 1.5 : 0}
           />
         )}
       </svg>
-    </div>
+    </Card>
   );
 }
