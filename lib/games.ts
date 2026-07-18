@@ -5,6 +5,7 @@
 
 import { FREE_GAME_LIMIT, GEN_CALL_COST } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_RETRY_OPTS, withRetry } from "@/lib/retry";
 import type {
   FullGameResponse,
   GameListItem,
@@ -94,10 +95,12 @@ export async function uploadDataUrl(
 ): Promise<string> {
   const { mimeType, bytes, ext } = parseDataUrl(dataUrl);
   const objectPath = path.includes(".") ? path : `${path}.${ext}`;
-  const { error } = await supabase.storage
-    .from(GAME_ASSETS_BUCKET)
-    .upload(objectPath, bytes, { contentType: mimeType, upsert: true });
-  if (error) throw error;
+  await withRetry(async () => {
+    const { error } = await supabase.storage
+      .from(GAME_ASSETS_BUCKET)
+      .upload(objectPath, bytes, { contentType: mimeType, upsert: true });
+    if (error) throw error;
+  }, DEFAULT_RETRY_OPTS);
   return publicStorageUrl(supabase, objectPath);
 }
 
@@ -293,8 +296,15 @@ export async function deleteGameAssets(
  */
 export async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
+    const res = await withRetry(async () => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const err = new Error(`HTTP ${response.status}`) as Error & { status: number };
+        err.status = response.status;
+        throw err;
+      }
+      return response;
+    }, DEFAULT_RETRY_OPTS);
     const buf = Buffer.from(await res.arrayBuffer());
     return buf.toString("base64");
   } catch {
