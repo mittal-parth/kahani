@@ -22,6 +22,12 @@ export const SESSION_TIME_LIMIT_SEC = Number(
   process.env.NEXT_PUBLIC_SESSION_TIME_LIMIT_SEC ?? "300"
 );
 
+/** Max retry attempts after the initial call (e.g. 3 → 500ms, 1s, 2s backoff). */
+export const RETRY_MAX = 3;
+
+/** Base delay in ms for exponential backoff (doubled each retry). */
+export const RETRY_BASE_MS = 500;
+
 /** API-call budget per generated asset kind (server derivation + client live meter). */
 export const GEN_CALL_COST = {
   universe: 1,

@@ -1,5 +1,5 @@
 import { Type } from "@google/genai";
-import { ai, generateImage, toDataUrl, type ImageResult } from "./gemini";
+import { generateContentWithRetry, generateImage, toDataUrl, type ImageResult } from "./gemini";
 import type { Premise } from "./types";
 import type {
   DialogueResponse,
@@ -329,7 +329,7 @@ function clampSuspicion(v: unknown): number {
  * every later model call receives this document and referees against it.
  */
 export async function generateBible(idea: string): Promise<GameBible> {
-  const res = await ai().models.generateContent({
+  const res = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: `PLAYER'S IDEA FOR THE OPENING SCENE / WORLD:\n${idea}\n\nAuthor the COMPLETE game bible for this idea: universe, one convergent mystery, story beats, the street, all 3 rooms, all 3 characters, and the failure rules. Everything downstream is generated from this document, so make every field concrete and specific — but keep prose tight: no field longer than its brief asks for.`,
     config: {
@@ -428,7 +428,7 @@ async function traceFrame(b64: string, mimeType: string): Promise<ImageResult> {
   const prompt =
     "Reproduce this EXACT image unchanged, then draw crisp solid 4-pixel MAGENTA (#FF00FF) outlines around every distinct thing in it: each building or hut, each boat, cart, well, shrine, statue, bridge, large tree or tree cluster, each water body, and each path or clearing. Every outline must tightly hug the thing it marks. Do NOT recolor, move, add, or remove anything else — the only change is the magenta borders.";
   try {
-    const res = await ai().models.generateContent({
+    const res = await generateContentWithRetry({
       model: IMAGE_MODEL,
       contents: [
         { inlineData: { data: b64, mimeType } },
@@ -580,7 +580,7 @@ export async function generateScreen(
   const traced = await traceFrame(frame.b64, frame.mimeType);
 
   // --- Pass 3: read both frames into structured hotspots ---
-  const res = await ai().models.generateContent({
+  const res = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: [
       { inlineData: { data: frame.b64, mimeType: frame.mimeType } },
@@ -776,7 +776,7 @@ export async function generateInteriorScene(
   if (!room || !npc) throw new Error(`No room ${roomIndex} in the bible.`);
   const id = `b${roomIndex}`;
 
-  const res = await ai().models.generateContent({
+  const res = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: [
       bibleBrief(bible),
@@ -994,7 +994,7 @@ export async function generateDialogue(
     );
   }
 
-  const res = await ai().models.generateContent({
+  const res = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: lines.join("\n"),
     config: {
@@ -1051,7 +1051,7 @@ export async function generateFinale(
   outcome: FinaleOutcome = "victory",
   reason?: string
 ): Promise<{ title: string; resolution: string; image: string; outcome: FinaleOutcome }> {
-  const res = await ai().models.generateContent({
+  const res = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: [
       bibleBrief(bible),
@@ -1124,7 +1124,7 @@ export async function synthesizeVoice(
 ): Promise<string | null> {
   const directed = style ? `${style}: "${text}"` : text;
   try {
-    const res = await ai().models.generateContent({
+    const res = await generateContentWithRetry({
       model: VOICE_MODEL,
       contents: [{ parts: [{ text: directed }] }],
       config: {

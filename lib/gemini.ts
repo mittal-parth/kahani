@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { HistoryEntry, Premise } from "./types";
 import { MAX_TURNS } from "./constants";
+import { DEFAULT_RETRY_OPTS, withRetry } from "./retry";
 import {
   applyEffects,
   CHOICE_TAGS,
@@ -24,6 +25,13 @@ export function ai(): GoogleGenAI {
   }
   client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return client;
+}
+
+/** Gemini generateContent with exponential backoff on transient failures. */
+export async function generateContentWithRetry(
+  params: Parameters<GoogleGenAI["models"]["generateContent"]>[0]
+) {
+  return withRetry(() => ai().models.generateContent(params), DEFAULT_RETRY_OPTS);
 }
 
 export type StoryBeat = {
@@ -257,7 +265,7 @@ export async function generateBeat(
     "Return ONLY the structured object. No markdown, no extra commentary.",
   ].join(" ");
 
-  const response = await ai().models.generateContent({
+  const response = await generateContentWithRetry({
     model: TEXT_MODEL,
     contents: buildStoryContext(premise, history, choice, stats, clock, progress),
     config: {
@@ -379,7 +387,7 @@ export async function generateImage(
   contents.push({ text: fullPrompt });
 
   try {
-    const response = await ai().models.generateContent({
+    const response = await generateContentWithRetry({
       model: IMAGE_MODEL,
       contents,
       config: { responseModalities: ["Image"] },
