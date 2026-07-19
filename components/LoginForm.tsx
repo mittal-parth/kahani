@@ -172,23 +172,18 @@ export function LoginForm() {
           </div>
 
           <form onSubmit={signInWithEmail} className="flex flex-col gap-3">
-            <Card className="gap-0 py-2">
-              <CardContent className="px-2">
-                <Label htmlFor="email" className="sr-only">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="border-0 shadow-none"
-                />
-              </CardContent>
-            </Card>
+            <Label htmlFor="email" className="sr-only">
+              Email
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
             <Button
               type="submit"
               className="w-full"
@@ -213,36 +208,32 @@ export function LoginForm() {
                 onSubmit={signInWithPassword}
                 className="flex flex-col gap-3"
               >
-                <Card className="gap-0 border-dashed py-2">
-                  <CardContent className="flex flex-col gap-2 px-2">
-                    <Label htmlFor="dev-email" className="sr-only">
-                      Email
-                    </Label>
-                    <Input
-                      id="dev-email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      value={devEmail}
-                      onChange={(e) => setDevEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="border-0 shadow-none"
-                    />
-                    <Label htmlFor="dev-password" className="sr-only">
-                      Password
-                    </Label>
-                    <Input
-                      id="dev-password"
-                      type="password"
-                      required
-                      autoComplete="current-password"
-                      value={devPassword}
-                      onChange={(e) => setDevPassword(e.target.value)}
-                      placeholder="Password"
-                      className="border-0 shadow-none"
-                    />
-                  </CardContent>
-                </Card>
+                <Label htmlFor="dev-email" className="sr-only">
+                  Email
+                </Label>
+                <Input
+                  id="dev-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={devEmail}
+                  onChange={(e) => setDevEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="border-dashed"
+                />
+                <Label htmlFor="dev-password" className="sr-only">
+                  Password
+                </Label>
+                <Input
+                  id="dev-password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={devPassword}
+                  onChange={(e) => setDevPassword(e.target.value)}
+                  placeholder="Password"
+                  className="border-dashed"
+                />
                 <Button
                   type="submit"
                   className="w-full"
