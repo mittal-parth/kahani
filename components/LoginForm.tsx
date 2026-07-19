@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, Mail } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -171,27 +171,35 @@ export function LoginForm() {
             <div className="h-0.5 flex-1 bg-border" />
           </div>
 
-          <form onSubmit={signInWithEmail} className="flex flex-col gap-3">
-            <Label htmlFor="email" className="sr-only">
-              Email
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={!email.trim() || loading !== null}
-            >
-              {loading === "email" ? "Sending…" : "Send magic link"}
-              <ArrowRight size={15} />
-            </Button>
+          <form onSubmit={signInWithEmail}>
+            <Card>
+              <CardContent>
+                <div className="grid gap-2">
+                  <Label htmlFor="email" className="sr-only">
+                    Email
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                </div>
+              </CardContent>
+              <CardFooter className="flex-col gap-2">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!email.trim() || loading !== null}
+                >
+                  {loading === "email" ? "Sending…" : "Send magic link"}
+                  <ArrowRight size={15} />
+                </Button>
+              </CardFooter>
+            </Card>
           </form>
 
           {IS_DEV ? (
@@ -204,46 +212,53 @@ export function LoginForm() {
                 <div className="h-0.5 flex-1 bg-border" />
               </div>
 
-              <form
-                onSubmit={signInWithPassword}
-                className="flex flex-col gap-3"
-              >
-                <Label htmlFor="dev-email" className="sr-only">
-                  Email
-                </Label>
-                <Input
-                  id="dev-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={devEmail}
-                  onChange={(e) => setDevEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="border-dashed"
-                />
-                <Label htmlFor="dev-password" className="sr-only">
-                  Password
-                </Label>
-                <Input
-                  id="dev-password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={devPassword}
-                  onChange={(e) => setDevPassword(e.target.value)}
-                  placeholder="Password"
-                  className="border-dashed"
-                />
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={
-                    !devEmail.trim() || !devPassword || loading !== null
-                  }
-                >
-                  {loading === "password" ? "Signing in…" : "Sign in"}
-                  <ArrowRight size={15} />
-                </Button>
+              <form onSubmit={signInWithPassword}>
+                <Card>
+                  <CardContent>
+                    <div className="flex flex-col gap-6">
+                      <div className="grid gap-2">
+                        <Label htmlFor="dev-email" className="sr-only">
+                          Email
+                        </Label>
+                        <Input
+                          id="dev-email"
+                          type="email"
+                          required
+                          autoComplete="email"
+                          value={devEmail}
+                          onChange={(e) => setDevEmail(e.target.value)}
+                          placeholder="you@example.com"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="dev-password" className="sr-only">
+                          Password
+                        </Label>
+                        <Input
+                          id="dev-password"
+                          type="password"
+                          required
+                          autoComplete="current-password"
+                          value={devPassword}
+                          onChange={(e) => setDevPassword(e.target.value)}
+                          placeholder="Password"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex-col gap-2">
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={
+                        !devEmail.trim() || !devPassword || loading !== null
+                      }
+                    >
+                      {loading === "password" ? "Signing in…" : "Sign in"}
+                      <ArrowRight size={15} />
+                    </Button>
+                  </CardFooter>
+                </Card>
               </form>
             </>
           ) : null}

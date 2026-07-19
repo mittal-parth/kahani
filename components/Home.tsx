@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MAX_CREATE_IDEA_LENGTH } from "@/lib/constants";
@@ -179,24 +179,22 @@ export function Home() {
             </CardContent>
           </Card>
         ) : quota.canCreate ? (
-          <div className="flex flex-col gap-3">
-            <Card className="gap-0 py-2">
-              <CardContent className="px-2">
-                <Textarea
-                  value={idea}
-                  onChange={(e) => setIdea(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                      startCreate();
-                  }}
-                  maxLength={MAX_CREATE_IDEA_LENGTH}
-                  rows={3}
-                  placeholder="e.g. A rain-flooded night market in Mumbai. I'm a courier carrying a sealed tiffin box someone will kill for…"
-                  className="resize-none border-0 shadow-none"
-                />
-              </CardContent>
-            </Card>
-            <div className="flex items-center justify-between gap-3 px-1">
+          <Card>
+            <CardContent>
+              <Textarea
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                    startCreate();
+                }}
+                maxLength={MAX_CREATE_IDEA_LENGTH}
+                rows={3}
+                placeholder="e.g. A rain-flooded night market in Mumbai. I'm a courier carrying a sealed tiffin box someone will kill for…"
+                className="resize-none"
+              />
+            </CardContent>
+            <CardFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-[11px] font-medium text-inksoft/70">
                 ⌘↵ to build ·{" "}
                 {quota.unlimited
@@ -207,8 +205,8 @@ export function Home() {
                 Build a new world
                 <ArrowRight size={15} />
               </Button>
-            </div>
-          </div>
+            </CardFooter>
+          </Card>
         ) : (
           <Card className="gap-0 py-5">
             <CardContent className="px-4">

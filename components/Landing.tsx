@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PREMISES } from "@/lib/premises";
@@ -80,23 +80,21 @@ export function Landing({ onStart }: { onStart: (idea: string) => void }) {
         >
           Your opening scene
         </Label>
-        <div className="flex flex-col gap-3">
-          <Card className="gap-0 py-2">
-            <CardContent className="px-2">
-              <Textarea
-                id="scene-idea"
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
-                }}
-                rows={4}
-                placeholder="e.g. A rain-flooded night market in Mumbai. I'm a courier carrying a sealed tiffin box someone will kill for…"
-                className="resize-none border-0 shadow-none"
-              />
-            </CardContent>
-          </Card>
-          <div className="flex items-center justify-between gap-3 px-1">
+        <Card>
+          <CardContent>
+            <Textarea
+              id="scene-idea"
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+              }}
+              rows={4}
+              placeholder="e.g. A rain-flooded night market in Mumbai. I'm a courier carrying a sealed tiffin box someone will kill for…"
+              className="resize-none"
+            />
+          </CardContent>
+          <CardFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-[11px] font-medium text-inksoft/70">
               Any place, any era, any story — ⌘↵ to start
             </span>
@@ -104,8 +102,8 @@ export function Landing({ onStart }: { onStart: (idea: string) => void }) {
               Build my world
               <ArrowRight size={15} />
             </Button>
-          </div>
-        </div>
+          </CardFooter>
+        </Card>
 
         <p className="mb-1 mt-8 text-xs font-bold uppercase tracking-widest text-inksoft">
           Or start from one of these
