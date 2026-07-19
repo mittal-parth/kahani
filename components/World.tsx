@@ -1354,7 +1354,7 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
           <Button
             variant={musicOn ? "default" : "neutral"}
             size="icon"
-            sound="toggle"
+            sound={musicOn ? "toggleOff" : "toggleOn"}
             onClick={() => setMusicOn((m) => !m)}
             title={musicOn ? "Music on" : "Music off"}
           >
@@ -1363,7 +1363,7 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
           <Button
             variant={voiceOn ? "default" : "neutral"}
             size="icon"
-            sound="toggle"
+            sound={voiceOn ? "toggleOff" : "toggleOn"}
             onClick={() => setVoiceOn((v) => !v)}
             title={voiceOn ? "Voice on" : "Voice off"}
           >

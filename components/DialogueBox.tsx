@@ -127,7 +127,7 @@ export function DialogueBox({
               type="button"
               variant={voiceOn ? "noShadow" : "neutral"}
               size="icon"
-              sound="toggle"
+              sound={voiceOn ? "toggleOff" : "toggleOn"}
               className={`ml-auto size-8 ${voiceOn ? "bg-main/10 text-main" : ""}`}
               onClick={onToggleVoice}
               title={voiceOn ? "Voice on" : "Voice off"}
