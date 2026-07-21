@@ -75,6 +75,7 @@ import { BOOT_PROGRESS, LoadingBlock } from "@/components/LoadingBlock";
 import { GameCanvas, type ExitDirection, type PlayerState, type TouchInput } from "./GameCanvas";
 import { DialogueBox } from "./DialogueBox";
 import { MobileControls, RotateToLandscapePrompt, useCoarsePointer } from "./MobileControls";
+import { MobileHud } from "./MobileHud";
 import {
   Minimap,
   mergeKnownCell,
@@ -1283,6 +1284,36 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
         onInteract={onInteract}
       />
 
+      {touchControls ? (
+        <MobileHud
+          premiseTitle={premise.title}
+          sceneTitle={scene.title}
+          questHook={questHook}
+          secondsLeft={secondsLeft}
+          inventory={inventory}
+          bible={bible}
+          cluesFound={cluesFound}
+          heat={heat}
+          allCluesFound={allCluesFound}
+          finale={finale !== null}
+          finaleLoading={finaleLoading}
+          onRunFinale={() => runFinale("victory")}
+          showVisionToggle={Boolean(scene.annotated)}
+          showVision={showVision}
+          onToggleVision={() => setShowVision((v) => !v)}
+          musicOn={musicOn}
+          onToggleMusic={() => setMusicOn((m) => !m)}
+          voiceOn={voiceOn}
+          onToggleVoice={() => setVoiceOn((v) => !v)}
+          onLeaveWorld={leaveWorld}
+          minimapHidden={Boolean(dialogue || finale)}
+          knownStreets={knownStreets}
+          walkedStreets={walkedStreets}
+          minimapCoord={minimapCoord}
+          playerPos={playerPos}
+          inside={scene.kind === "interior"}
+        />
+      ) : (
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 p-2 sm:gap-3 sm:p-4">
         <div className="flex max-w-[45vw] flex-col gap-1.5 sm:max-w-sm sm:gap-2">
           <Card className="gap-0 px-3 py-2 sm:px-4 sm:py-2.5">
@@ -1418,11 +1449,12 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
               currentCoord={minimapCoord}
               player={playerPos}
               inside={scene.kind === "interior"}
-              compact={touchControls}
+              compact={false}
             />
           )}
         </div>
       </div>
+      )}
 
       <AnimatePresence>
         {ambient && (

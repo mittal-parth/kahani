@@ -16,10 +16,13 @@ export type MinimapProps = {
   inside: boolean;
   /** Smaller panel for mobile landscape HUD. */
   compact?: boolean;
+  /** Extra-small panel when mobile map is expanded from the icon toggle. */
+  mini?: boolean;
 };
 
 const PANEL_DEFAULT = 140;
 const PANEL_COMPACT = 96;
+const PANEL_MINI = 72;
 const INSET = 10;
 const GRID_PAD = 1;
 
@@ -75,8 +78,9 @@ export function Minimap({
   player,
   inside,
   compact = false,
+  mini = false,
 }: MinimapProps) {
-  const PANEL = compact ? PANEL_COMPACT : PANEL_DEFAULT;
+  const PANEL = mini ? PANEL_MINI : compact ? PANEL_COMPACT : PANEL_DEFAULT;
   const walkedSet = new Set(walked);
   const cells = known.length > 0 ? known : [{ x: 0, y: 0 }];
 
