@@ -6,8 +6,8 @@ import type { Hotspot } from "@/lib/universe";
 import type { TouchInput } from "@/components/GameCanvas";
 import { Button } from "@/components/ui/button";
 
-const JOYSTICK_BASE = 120;
-const JOYSTICK_KNOB = 44;
+const JOYSTICK_BASE = 96;
+const JOYSTICK_KNOB = 34;
 const DEAD_ZONE = 0.15;
 
 /** True on phones/tablets with coarse primary pointer. */
@@ -92,7 +92,7 @@ export function MobileControls({
           sound="tap"
           disabled={!nearHotspot}
           aria-label={nearHotspot ? actionLabel(nearHotspot) : "Action"}
-          className={`size-16 rounded-full text-sm font-bold ${
+          className={`size-14 rounded-full text-sm font-bold ${
             nearHotspot
               ? "bg-main text-main-foreground shadow-shadow"
               : "bg-black/40 text-white/50"
@@ -101,7 +101,7 @@ export function MobileControls({
             if (nearHotspot) onInteract(nearHotspot);
           }}
         >
-          <Hand size={22} strokeWidth={2.5} />
+          <Hand size={18} strokeWidth={2.5} />
         </Button>
       </div>
 
