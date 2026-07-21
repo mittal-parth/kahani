@@ -72,8 +72,9 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { BOOT_PROGRESS, LoadingBlock } from "@/components/LoadingBlock";
-import { GameCanvas, type ExitDirection, type PlayerState } from "./GameCanvas";
+import { GameCanvas, type ExitDirection, type PlayerState, type TouchInput } from "./GameCanvas";
 import { DialogueBox } from "./DialogueBox";
+import { MobileControls, RotateToLandscapePrompt, useCoarsePointer } from "./MobileControls";
 import {
   Minimap,
   mergeKnownCell,
@@ -305,6 +306,10 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
   const [playerPos, setPlayerPos] = useState<{ x: number; y: number } | null>(null);
   const [knownStreets, setKnownStreets] = useState<MinimapCell[]>([]);
   const [walkedStreets, setWalkedStreets] = useState<string[]>([]);
+  /** Discrete joystick axes for mobile movement. */
+  const touchInputRef = useRef<TouchInput>({ x: 0, y: 0 });
+  const [nearHotspot, setNearHotspot] = useState<Hotspot | null>(null);
+  const touchControls = useCoarsePointer();
   /** Wall-clock session budget; resets each time the player enters a world. */
   const [secondsLeft, setSecondsLeft] = useState(SESSION_TIME_LIMIT_SEC);
 
@@ -1243,6 +1248,8 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-ink">
+      <RotateToLandscapePrompt visible={phase === "playing"} />
+
       <GameCanvas
         scene={scene}
         sprite={sprite}
@@ -1257,13 +1264,29 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
         spawn={spawn}
         onExitEdge={onExitEdge}
         onPosition={onPlayerPosition}
+        onNearChange={setNearHotspot}
+        touchInputRef={touchInputRef}
+        touchControls={touchControls}
         showVision={showVision}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-4">
-        <div className="flex max-w-sm flex-col gap-2">
-          <Card className="gap-0 px-4 py-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-inksoft">
+      <MobileControls
+        touchInputRef={touchInputRef}
+        nearHotspot={nearHotspot}
+        paused={
+          dialogue !== null ||
+          entering !== null ||
+          wandering !== null ||
+          pendingExplore !== null ||
+          assetLoading !== null
+        }
+        onInteract={onInteract}
+      />
+
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 p-2 sm:gap-3 sm:p-4">
+        <div className="flex max-w-[45vw] flex-col gap-1.5 sm:max-w-sm sm:gap-2">
+          <Card className="gap-0 px-3 py-2 sm:px-4 sm:py-2.5">
+            <p className="line-clamp-1 text-[10px] font-bold uppercase tracking-widest text-inksoft">
               {premise.title} · {scene.title}
             </p>
             {questHook && (
@@ -1395,6 +1418,7 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
               currentCoord={minimapCoord}
               player={playerPos}
               inside={scene.kind === "interior"}
+              compact={touchControls}
             />
           )}
         </div>
@@ -1414,13 +1438,13 @@ export function World({ mode, gameId: routeGameId, initialIdea }: WorldProps) {
         )}
       </AnimatePresence>
 
-      {!dialogue && (
+      {!dialogue && !touchControls && (
         <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/55 px-4 py-2 text-xs font-semibold text-white/90 backdrop-blur-sm">
           WASD / arrows — move · E — enter / talk
         </div>
       )}
 
-      {!dialogue && !finale && (
+      {!dialogue && !finale && !touchControls && (
         <Card className="pointer-events-none absolute bottom-4 right-4 z-10 flex-row items-center gap-2 gap-y-0 px-3 py-2"
           title="Every screen is painted, then the model traces borders over its own frame and reads both images back into the game"
         >
