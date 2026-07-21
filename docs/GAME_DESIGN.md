@@ -44,3 +44,5 @@ a sprite, 3–4 interiors (prefetched), and a voice clip per dialogue line.
 - `components/DialogueBox.tsx` — talk UI (choices + free text)
 
 Controls: **WASD/←→↑↓** move · **E** enter/talk · **1–3** replies · **Esc** leave.
+
+**Mobile (landscape):** bottom-right **joystick** move · bottom-left **Action** enter/talk/pick up · tap dialogue chips.

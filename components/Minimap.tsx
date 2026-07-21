@@ -14,9 +14,12 @@ export type MinimapProps = {
   currentCoord: { x: number; y: number } | null;
   player: { x: number; y: number } | null;
   inside: boolean;
+  /** Smaller panel for mobile landscape HUD. */
+  compact?: boolean;
 };
 
-const PANEL = 140;
+const PANEL_DEFAULT = 140;
+const PANEL_COMPACT = 96;
 const INSET = 10;
 const GRID_PAD = 1;
 
@@ -71,7 +74,9 @@ export function Minimap({
   currentCoord,
   player,
   inside,
+  compact = false,
 }: MinimapProps) {
+  const PANEL = compact ? PANEL_COMPACT : PANEL_DEFAULT;
   const walkedSet = new Set(walked);
   const cells = known.length > 0 ? known : [{ x: 0, y: 0 }];
 

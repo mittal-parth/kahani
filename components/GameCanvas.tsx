@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { Hotspot, SceneData } from "@/lib/universe";
 import { getCachedImage, preloadImage } from "@/lib/image-cache";
 
@@ -16,6 +16,23 @@ export type PlayerState = {
 
 export type ExitDirection = "n" | "e" | "s" | "w";
 
+/** Discrete joystick axes written by mobile controls (-1, 0, or 1). */
+export type TouchInput = { x: number; y: number };
+
+function interactionLabel(near: Hotspot, touchControls: boolean): string {
+  const prefix = touchControls ? "Action —" : "E —";
+  switch (near.kind) {
+    case "building":
+      return `${prefix} enter ${near.name}`;
+    case "npc":
+      return `${prefix} talk to ${near.name}`;
+    case "item":
+      return `${prefix} pick up ${near.name}`;
+    default:
+      return `${prefix} ${near.name}`;
+  }
+}
+
 export function GameCanvas({
   scene,
   sprite,
@@ -24,7 +41,10 @@ export function GameCanvas({
   spawn,
   onExitEdge,
   onPosition,
+  onNearChange,
   showVision,
+  touchInputRef,
+  touchControls = false,
 }: {
   scene: SceneData;
   sprite: HTMLCanvasElement | null;
@@ -37,8 +57,14 @@ export function GameCanvas({
   onExitEdge?: (dir: ExitDirection) => void;
   /** Live player pose for HUD (minimap); throttled in the render loop. */
   onPosition?: (p: PlayerState) => void;
+  /** Hotspot within interaction range; throttled for mobile action button. */
+  onNearChange?: (hotspot: Hotspot | null) => void;
   /** Show the engine's traced frame instead of the clean one. */
   showVision?: boolean;
+  /** Joystick axes from mobile controls; merged with keyboard each frame. */
+  touchInputRef?: RefObject<TouchInput>;
+  /** Swap in-canvas prompt copy for touch (Action vs E). */
+  touchControls?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -55,6 +81,12 @@ export function GameCanvas({
   onPositionRef.current = onPosition;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const touchInputRefProp = useRef(touchInputRef);
+  touchInputRefProp.current = touchInputRef;
+  const touchControlsRef = useRef(touchControls);
+  touchControlsRef.current = touchControls;
+  const onNearChangeRef = useRef(onNearChange);
+  onNearChangeRef.current = onNearChange;
   const debugRef = useRef(false);
   const mainColorRef = useRef("#ffbf00");
   useEffect(() => {
@@ -140,6 +172,8 @@ export function GameCanvas({
     let lastTick = performance.now();
     let lastPositionReport = 0;
     let lastReported = { x: 0, y: 0, moving: false };
+    let lastNearReport = 0;
+    let lastReportedNear: Hotspot | null = null;
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
@@ -169,12 +203,13 @@ export function GameCanvas({
       const p = playerRef.current;
       if (!pausedRef.current) {
         const keys = keysRef.current;
+        const touch = touchInputRefProp.current?.current ?? { x: 0, y: 0 };
         let vx = 0;
         let vy = 0;
-        if (keys["arrowleft"] || keys["a"]) vx -= 1;
-        if (keys["arrowright"] || keys["d"]) vx += 1;
-        if (keys["arrowup"] || keys["w"]) vy -= 1;
-        if (keys["arrowdown"] || keys["s"]) vy += 1;
+        if (keys["arrowleft"] || keys["a"] || touch.x < 0) vx -= 1;
+        if (keys["arrowright"] || keys["d"] || touch.x > 0) vx += 1;
+        if (keys["arrowup"] || keys["w"] || touch.y < 0) vy -= 1;
+        if (keys["arrowdown"] || keys["s"] || touch.y > 0) vy += 1;
         if (vx !== 0) p.dir = vx > 0 ? 1 : -1;
         p.moving = vx !== 0 || vy !== 0;
 
@@ -232,6 +267,16 @@ export function GameCanvas({
         }
       }
       nearRef.current = near;
+
+      const reportNear = onNearChangeRef.current;
+      if (reportNear) {
+        const nearChanged = near?.id !== lastReportedNear?.id;
+        if (nearChanged && now - lastNearReport >= 100) {
+          lastNearReport = now;
+          lastReportedNear = near;
+          reportNear(near);
+        }
+      }
 
       // --- Draw backdrop (cover fit; game coords are % of the image) ---
       ctx.clearRect(0, 0, cw, ch);
@@ -328,14 +373,7 @@ export function GameCanvas({
 
       // --- Interaction prompt ---
       if (near && !pausedRef.current) {
-        const label =
-          near.kind === "building"
-            ? `E — enter ${near.name}`
-            : near.kind === "npc"
-              ? `E — talk to ${near.name}`
-              : near.kind === "item"
-                ? `E — pick up ${near.name}`
-                : `E — ${near.name}`;
+        const label = interactionLabel(near, touchControlsRef.current);
         ctx.font = "600 14px var(--font-sans), system-ui, sans-serif";
         const tw = ctx.measureText(label).width;
         const bx = footX - tw / 2 - 12;
@@ -386,5 +424,10 @@ export function GameCanvas({
     };
   }, [scene, sprite]);
 
-  return <canvas ref={canvasRef} className="block h-full w-full" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="block h-full w-full touch-none select-none"
+    />
+  );
 }
